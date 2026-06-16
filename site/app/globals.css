@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+
+:root {
+  --background: #060606;
+  --foreground: #e4e4e7;
+  --color-fd-background: #060606;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, 'SF Mono', monospace;
+  --font-display: var(--font-display), var(--font-mono), monospace;
+}
+
+::selection {
+  background: rgba(74, 222, 128, 0.25);
+}

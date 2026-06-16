@@ -1,0 +1,39 @@
+---
+title: Flows
+description: Parent/child pipelines with per-node status.
+---
+
+Flows compose tasks into parent/child trees — BullMQ's FlowProducer with a
+typed API. A parent runs after all of its children complete, and the whole
+tree renders as a graph in Workbench with per-node status and duration.
+
+## Building a flow
+
+Every task exposes `.child()` to build tree nodes, and `enqueueFlow()`
+submits the tree:
+
+```ts
+import { enqueueFlow } from '@openqueue/sdk';
+import { chargeCard, emailReceipt, finalizeOrder, validateCart } from './tasks';
+
+await enqueueFlow(
+  finalizeOrder.child({ orderId }, undefined, [
+    validateCart.child({ orderId }),
+    chargeCard.child({ orderId, amount }),
+    emailReceipt.child({ orderId }),
+  ]),
+);
+```
+
+The signature is `task.child(payload, opts?, children?)`:
+
+- `payload` — validated against the task's schema, like `trigger`.
+- `opts` — per-node enqueue options (delay, attempts overrides).
+- `children` — child nodes that must complete before this node runs.
+
+## Failure semantics
+
+Each node retries independently with its task's `attempts` and `backoff`.
+If a child exhausts its retries, the parent does not run and the flow is
+marked failed — inspect the graph in Workbench to see exactly which node
+broke and replay it from there.

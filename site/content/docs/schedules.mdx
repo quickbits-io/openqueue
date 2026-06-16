@@ -1,0 +1,54 @@
+---
+title: Schedules
+description: Static cron on tasks, and dynamic schedules at runtime.
+---
+
+OpenQueue supports two kinds of schedules: **static** cron declared on the
+task, and **dynamic** schedules created at runtime.
+
+## Static cron
+
+Declare `cron` on the task and the worker registers it on boot. Each tick
+runs with input derived from the task schema defaults. Schema-less cron tasks
+run with `{}`:
+
+```ts
+export const weeklyDigest = task({
+  id: 'weekly-digest',
+  schema: z.object({}).default({}),
+  cron: '0 9 * * MON',
+  run: async () => sendDigests(),
+});
+```
+
+If a cron task has a schema with required fields and no defaults, worker boot
+fails because OpenQueue cannot invent scheduled input.
+
+## Dynamic schedules
+
+Create, list, and delete schedules programmatically — per user, per tenant,
+or from an admin UI — without redeploying:
+
+```ts
+await weeklyDigest.schedules.create({
+  cron: '0 8 * * *',
+  input: {},
+  deduplicationKey: `digest:${customerId}`,
+});
+
+const schedules = await weeklyDigest.schedules.list();
+
+await weeklyDigest.schedules.delete(scheduleId);
+```
+
+Dynamic schedules require a storage adapter (see
+[Persistence](/docs/persistence)) so they survive restarts.
+
+## In Workbench
+
+The Schedules view shows every schedule — static and dynamic — with its cron
+expression in plain English, the next run time, and the last run's outcome
+and duration. Pause, resume, or edit cron expressions from the UI.
+
+Cron expressions are validated with `assertCron` before they're accepted, so
+a typo fails at create time, not silently at 3am.

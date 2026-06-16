@@ -1,0 +1,93 @@
+{
+  "name": "@openqueue/core",
+  "version": "0.1.0",
+  "description": "Core engine for OpenQueue — typed tasks, queues, schedules, flows, and persistence on top of BullMQ + Redis.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quickbits-io/openqueue.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/quickbits-io/openqueue/issues"
+  },
+  "keywords": [
+    "openqueue",
+    "queue",
+    "jobs",
+    "background-jobs",
+    "bullmq",
+    "redis",
+    "worker",
+    "bun",
+    "typescript"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./drizzle": {
+      "types": "./dist/drizzle.d.ts",
+      "import": "./dist/drizzle.js",
+      "default": "./dist/drizzle.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "default": "./dist/types.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf .turbo node_modules dist",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "bullmq": "^5.71.1",
+    "cron-parser": "^4.9.0",
+    "drizzle-orm": "^0.45.1",
+    "ioredis": "^5.10.1",
+    "zod": "^4.1.13"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-trace-base": "^2.5.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-trace-base": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-trace-base": "^2.5.0",
+    "@types/node": "^22.10.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

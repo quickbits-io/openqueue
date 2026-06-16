@@ -1,0 +1,63 @@
+---
+title: Introduction
+description: What OpenQueue is, and why it exists.
+---
+
+OpenQueue is a batteries-included background job framework for TypeScript,
+built on [BullMQ](https://bullmq.io) and Redis. You define tasks as plain
+functions with a Zod schema; OpenQueue handles queues, workers, validation,
+retries, scheduling, flows, and observability — and ships a real dashboard
+(Workbench) inside your worker.
+
+```ts
+import { task } from '@openqueue/sdk';
+import { z } from 'zod';
+
+export const sendWelcome = task({
+  id: 'send-welcome',
+  schema: z.object({ email: z.string().email() }),
+  run: async (payload, ctx) => {
+    ctx.logger.info('sending welcome email', { email: payload.email });
+    return { ok: true };
+  },
+});
+
+// anywhere in your app
+await sendWelcome.trigger({ email: 'alex@example.com' });
+```
+
+## Why OpenQueue
+
+- **No new infrastructure.** It runs on the Redis you already have. Run
+  history can persist to the Postgres you already have, via Drizzle.
+- **Typed end to end.** The Zod schema validates payloads at trigger time and
+  types them inside `run`.
+- **Operations included.** Workbench gives you live counters, run inspection,
+  retry-from-the-UI, flow graphs, schedules, error triage, and a test console
+  — without building an admin page.
+- **Boring failure semantics.** Three attempts with exponential backoff by
+  default; a small error taxonomy (`RetryableError`, `NonRetryableError`,
+  timeouts, TTLs) when you need control.
+
+## Packages
+
+| Package | What it is |
+| --- | --- |
+| `@openqueue/sdk` | The main entry — `task()`, `defineConfig()`, `enqueueFlow()`, errors, adapters. |
+| `@openqueue/core` | The underlying runtime (re-exported by the main package). |
+| `@openqueue/worker` | The worker app — loads your config, runs tasks, serves Workbench. |
+| `@openqueue/workbench` | The dashboard — standalone or mountable into Hono / Next.js. |
+| `@openqueue/cli` | The `openqueue` CLI — `init`, `dev`, `build`, `start`. |
+
+## How it fits together
+
+1. You declare tasks in a directory (for example `worker/`), one exported
+   `task()` per job type.
+2. `worker.config.ts` points OpenQueue at that directory and at Redis.
+3. `openqueue dev` (or `start` in production) discovers the tasks, creates
+   the BullMQ queues and workers, registers cron schedules, and serves
+   Workbench.
+4. Your app imports the task and calls `.trigger(payload)` — or triggers by
+   id over the queue client.
+
+Continue with the [Quickstart](/docs/quickstart).

@@ -1,0 +1,130 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Workbench app icon — blocky W on a dark rounded square.
+
+    Canvas: 1024×1024 with ~100px transparent padding around the
+    824×824 rounded square (Apple Big Sur template, 22% corner radius).
+
+    Glyph: 6 illuminated blocks arranged as a W —
+      • 4 tall, thin stems across the top: outer pair / inner pair
+        with a *deliberately uneven* gap pattern (wide / narrow /
+        wide) so the eye reads them as two V's meeting in the middle,
+      • 2 wider rectangles below as the V-valleys.
+
+    Each block is rendered with a single soft bloom pass, then the
+    sharp shape stacked on top — same "lit panel" feel as the
+    reference, no smoky vignette.
+  -->
+
+  <defs>
+    <!-- Backdrop gradient. Subtle vertical lift, top a touch lighter
+         than bottom — matches the reference's quiet ambient lighting. -->
+    <linearGradient id="bg" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#181818"/>
+      <stop offset="1" stop-color="#080808"/>
+    </linearGradient>
+
+    <!-- Soft inner ring so the rounded square has a hairline edge
+         under the bezel light, not a hard cut. -->
+    <linearGradient id="border" x1="850" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3A3A3A"/>
+      <stop offset="0.5" stop-color="#141414"/>
+      <stop offset="1" stop-color="#101010" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <!-- Procedural grain — keeps the dark surface off looking like
+         flat plastic at retina sizes. baseFrequency tuned high
+         enough that the noise stays sub-pixel at 32px (so it
+         disappears) but visible at 512+ as a quiet film grain.
+         numOctaves=1 + a seed chosen to avoid the horizontal
+         banding the previous (0.85 / 2) combo produced when
+         the dark background got simpler. -->
+    <filter id="grain" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="1" stitchTiles="stitch" seed="3"/>
+      <feColorMatrix values="0 0 0 0 1   0 0 0 0 1   0 0 0 0 1   0 0 0 1 0"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+
+    <!-- Outer drop shadow on the rounded square. Sized to fit inside
+         the 100px transparent padding so the PNG export is clean. -->
+    <filter id="outerShadow" x="-10%" y="-10%" width="120%" height="125%"
+            filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="34" flood-color="#000" flood-opacity="0.40"/>
+    </filter>
+
+    <!-- Single bloom pass — clean halo around each lit block. -->
+    <filter id="bloom" x="-40%" y="-40%" width="180%" height="180%"
+            filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+
+    <!--
+      Reusable glyph: a W traced as a stair-stepped diagonal path.
+
+      The W's four strokes (\ / \ /) can't be drawn with orthogonal
+      blocks alone, so each stroke is sampled at top + middle + bottom
+      and the blocks land on those samples. The eye fills in the
+      diagonals between adjacent blocks — same trick as a 1-bit
+      pixel-font W.
+
+      Five "endpoint" blocks (taller, more weight):
+        A  outer-left top          E  outer-right top
+        B  left V-valley           D  right V-valley
+        C  middle peak (top centre)
+
+      Four "midstroke" blocks (smaller, sit on each diagonal):
+        m1 between A and B         m3 between C and D
+        m2 between B and C         m4 between D and E
+
+      9 blocks total. Centred on x=512, symmetric.
+    -->
+    <g id="glyph">
+      <!-- W is vertically centred on y=512 (icon centre).
+           Three-row layout: y=322 (tops) → 462 (midstroke) → 602
+           (valleys). Vertical span 322..702 = 380px, midpoint 512. -->
+
+      <!-- Endpoints — slightly taller so the "corners" of the W
+           anchor the silhouette. -->
+      <rect x="205" y="322" width="58" height="100" rx="6"/>
+      <rect x="335" y="602" width="58" height="100" rx="6"/>
+      <rect x="483" y="322" width="58" height="100" rx="6"/>
+      <rect x="631" y="602" width="58" height="100" rx="6"/>
+      <rect x="761" y="322" width="58" height="100" rx="6"/>
+
+      <!-- Midstroke samples — placed on each diagonal so the four
+           strokes \ / \ / are unmistakable. -->
+      <rect x="270" y="462" width="58" height="100" rx="6"/>
+      <rect x="418" y="462" width="58" height="100" rx="6"/>
+      <rect x="548" y="462" width="58" height="100" rx="6"/>
+      <rect x="696" y="462" width="58" height="100" rx="6"/>
+    </g>
+  </defs>
+
+  <!-- Rounded-square backdrop with grain + soft inner ring.
+       No radial vignette — the reference reads as evenly lit. -->
+  <g filter="url(#outerShadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="824" rx="185"
+          fill="#FFFFFF" fill-opacity="0.025" filter="url(#grain)"/>
+    <rect x="101.5" y="101.5" width="821" height="821" rx="183.5"
+          stroke="url(#border)" stroke-opacity="0.55" stroke-width="3"/>
+  </g>
+
+  <!-- Clip the bloom so light never spills past the rounded square. -->
+  <clipPath id="bodyClip">
+    <rect x="100" y="100" width="824" height="824" rx="185"/>
+  </clipPath>
+
+  <g clip-path="url(#bodyClip)">
+    <!-- Soft halo behind each block. Single pass, moderate opacity —
+         enough to feel "lit", not enough to muddy the chrome. -->
+    <g fill="#FFFFFF" opacity="0.55" filter="url(#bloom)">
+      <use href="#glyph"/>
+    </g>
+
+    <!-- Sharp blocks on top — these are what the eye reads as the W. -->
+    <g fill="#F4F4F4">
+      <use href="#glyph"/>
+    </g>
+  </g>
+</svg>

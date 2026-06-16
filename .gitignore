@@ -1,0 +1,46 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# turbo
+.turbo/
+
+# next.js / site
+.next/
+.source/
+next-env.d.ts
+
+# vercel
+.vercel
+
+# test / coverage
+coverage/
+
+# test / pack artifacts
+.tmp/
+*.tgz
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env files
+.env
+.env.*
+!.env.example
+
+# editor / os
+.DS_Store
+*.pem
+.idea/
+.vscode/*
+!.vscode/extensions.json

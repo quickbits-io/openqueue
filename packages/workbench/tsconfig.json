@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node", "vite/client", "bun"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowImportingTsExtensions": false,
+    "strict": false,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": false,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/ui/*", "./src/*"],
+      "@/core/*": ["./src/core/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@openqueue/example-basic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "worker:dev": "openqueue dev --env-file .env",
+    "worker:build": "openqueue build",
+    "worker:start": "openqueue start --env-file .env"
+  },
+  "dependencies": {
+    "@openqueue/sdk": "workspace:*",
+    "@openqueue/cli": "workspace:*",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.18",
+    "typescript": "^5.9.3"
+  }
+}

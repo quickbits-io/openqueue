@@ -1,0 +1,58 @@
+---
+title: Errors & retries
+description: The error taxonomy, and how retries actually behave.
+---
+
+By default a task gets **3 attempts with exponential backoff** starting at
+one second. Tune it per task:
+
+```ts
+export const syncContacts = task({
+  id: 'sync-contacts',
+  schema,
+  attempts: 5,
+  backoff: { type: 'exponential', delay: 2000 },
+  run: async (payload) => { /* … */ },
+});
+```
+
+A plain thrown error counts as retryable. For explicit control, use the
+error taxonomy:
+
+```ts
+import { NonRetryableError, RetryableError } from '@openqueue/sdk';
+
+run: async (payload) => {
+  const res = await fetch(url);
+
+  if (res.status === 404) {
+    // permanent — fail now, skip remaining attempts
+    throw new NonRetryableError('contact list deleted');
+  }
+  if (res.status === 429) {
+    // transient — retry with backoff
+    throw new RetryableError('rate limited');
+  }
+};
+```
+
+## The taxonomy
+
+| Error | Behavior |
+| --- | --- |
+| `RetryableError` | Fails the attempt; retries until `attempts` is exhausted. |
+| `NonRetryableError` | Fails the run immediately — no further attempts. |
+| `JobTimeoutError` | Thrown by the runtime when a run exceeds the task's `ttl`. |
+| `JobExpiredError` | The job sat in the queue past its expiry and was dropped. |
+| `JobCanceledError` | The run was canceled (for example from Workbench). |
+
+Use `isNonRetryable(err)` when wrapping errors in your own code, and
+`serializeError(err)` if you need the same wire format OpenQueue stores on
+the run.
+
+## Triage in Workbench
+
+Failed runs keep their payload, attempt history, log lines, and serialized
+error. The Errors view groups failures by error class and ranks them by
+frequency with a 24h trend — so a regression shows up as a spike, not as a
+support ticket. Retry a single run or a whole class from the UI.

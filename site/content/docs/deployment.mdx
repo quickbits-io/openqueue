@@ -1,0 +1,67 @@
+---
+title: Deployment
+description: Building, running, and observing the worker in production.
+---
+
+## Build and start
+
+```bash
+bunx openqueue build
+```
+
+`build` bundles every discovered task into a single manifest at
+`.openqueue/build/manifest.mjs` (configurable via `build.outDir`) and prints
+what it found:
+
+```
+OpenQueue build wrote 14 tasks, 5 queues, 3 schedules, 412.7 KB to .openqueue/build/manifest.mjs
+```
+
+Dependencies that must stay external to the bundle go in `build.external`.
+
+```bash
+bunx openqueue start
+```
+
+`start` loads `worker.config.ts`, prefers the built manifest when present,
+connects to Redis, and runs until it receives `SIGTERM`/`SIGINT` — shutting
+down gracefully so in-flight jobs finish or are returned to the queue.
+
+## Docker
+
+The repository ships a worker Dockerfile under `docker/worker`. The image
+runs `openqueue start` against your config; the only required runtime input
+is `REDIS_URL`.
+
+```dockerfile
+FROM oven/bun:1 AS base
+WORKDIR /app
+COPY . .
+RUN bun install --frozen-lockfile && bunx openqueue build
+CMD ["bunx", "openqueue", "start"]
+```
+
+Scale horizontally by running more replicas — BullMQ coordinates workers
+through Redis, and `concurrency.global` caps each replica. To run heavy
+queues on their own, bigger machines, see [Scaling](/docs/scaling).
+
+## Observability
+
+- **OpenTelemetry** — trace context is captured at enqueue and restored when
+  the job runs, so a job appears as a child span of the request that
+  triggered it. Spans are emitted into the process's existing tracer
+  provider.
+- **Drains** — run lifecycle events (enqueued, started, completed, failed)
+  can be fanned out to sinks. `consoleDrain()` is built in;
+  `composeDrains()` combines several; implement `QueueDrain` to ship events
+  anywhere else.
+- **Metrics** — per-queue counters and latency percentiles power the
+  Workbench overview; enable persistence with the `metrics` config block.
+
+## Production checklist
+
+- Set a unique `namespace` per application sharing a Redis instance.
+- Put Workbench behind `auth` or mount it inside your authenticated app.
+- Wire `postgresAdapter` so run history survives Redis eviction.
+- Keep `attempts`/`backoff` deliberate on tasks with side effects — and make
+  handlers idempotent, since at-least-once delivery is the contract.
