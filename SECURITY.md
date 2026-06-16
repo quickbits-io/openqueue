@@ -27,3 +27,25 @@ OpenQueue is pre-1.0; security fixes land on the latest published minor of the
   `persist-credentials: false`; Bun does not run dependency lifecycle scripts
   unless allow-listed.
 - GitHub Actions are pinned to commit SHAs and updated by Dependabot.
+
+## Preview deployments (Vercel)
+
+The docs site (`site/`) deploys to Vercel, which builds preview deployments for
+pull requests — including from forks. Preview builds run untrusted PR code, so:
+
+- **Keep all real secrets scoped to the Production environment only.** Vercel
+  env vars are scoped per environment (Production / Preview / Development); never
+  put a secret in the Preview scope, so preview builds are secret-free by
+  construction. (Today the site reads only `NEXT_PUBLIC_OPENPANEL_CLIENT_ID`,
+  which is public.)
+- Vercel does **not** share environment variables with deployments built from
+  **forked** PRs by default, and serves preview deployments with
+  `X-Robots-Tag: noindex` (so a malicious preview can't be indexed/abused).
+- For stricter control, enable Vercel's **fork build authorization** (Project →
+  Settings → Git) so a maintainer must approve a fork's deployment before it
+  builds, and/or **Deployment Protection** to require auth to view previews.
+- Fork previews stay on `*.vercel.app` — don't point a custom preview domain at
+  fork PRs.
+
+Vercel's fork protection is configured in the Vercel dashboard and is separate
+from the GitHub Actions controls above.
