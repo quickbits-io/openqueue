@@ -1,0 +1,68 @@
+{
+  "name": "@openqueue/sdk",
+  "version": "0.1.0",
+  "description": "OpenQueue SDK — define and enqueue typed, durable background jobs. The main entrypoint for OpenQueue.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/quickbits-io/openqueue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quickbits-io/openqueue.git",
+    "directory": "packages/openqueue"
+  },
+  "bugs": {
+    "url": "https://github.com/quickbits-io/openqueue/issues"
+  },
+  "keywords": [
+    "openqueue",
+    "queue",
+    "jobs",
+    "background-jobs",
+    "bullmq",
+    "redis",
+    "task-queue",
+    "bun",
+    "typescript"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf .turbo node_modules dist",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openqueue/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}

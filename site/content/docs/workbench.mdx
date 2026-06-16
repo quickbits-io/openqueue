@@ -1,0 +1,72 @@
+---
+title: Workbench
+description: The dashboard — served by your worker, or mounted in your own app.
+---
+
+Workbench is OpenQueue's dashboard: queue overview with live counters and
+latency percentiles, a virtualized runs table with payloads and logs, flow
+graphs, schedule management, error triage grouped by class, and a test
+console for enqueueing jobs by hand.
+
+## Served by the worker
+
+The zero-effort path — enable it in your config and the worker hosts it:
+
+```ts title="worker.config.ts"
+export default defineConfig({
+  // …
+  workbench: {
+    enabled: true,
+    title: 'Jobs',
+    basePath: '/workbench',
+    auth: {
+      username: process.env.WORKBENCH_USER!,
+      password: process.env.WORKBENCH_PASSWORD!,
+    },
+  },
+});
+```
+
+## Mounted in Next.js
+
+Serve the dashboard from the app you already deploy, behind your existing
+auth. Create a catch-all route:
+
+```ts title="app/admin/jobs/[[...workbench]]/route.ts"
+import { workbench } from '@openqueue/workbench/next';
+
+export const { GET, POST, PUT, PATCH, DELETE } = workbench({
+  redis: { url: process.env.REDIS_URL! },
+  basePath: '/admin/jobs',
+});
+```
+
+Leave `basePath` unset when the route lives at the app root.
+
+## Mounted in Hono
+
+```ts
+import { createWorkbenchApp } from '@openqueue/workbench/hono';
+
+const dashboard = await createWorkbenchApp({
+  redis: { url: process.env.REDIS_URL! },
+});
+
+app.route('/workbench', dashboard);
+```
+
+When `redis` is provided without an explicit queue list, Workbench discovers
+queues automatically from the published queue catalog.
+
+## Read-only mode
+
+Set `readonly: true` to expose the dashboard to a wider audience without
+retry/enqueue/pause actions — useful for support teams and stakeholders.
+
+## Prior art
+
+Hat tip to [pontusab/workbench](https://github.com/pontusab/workbench),
+the BullMQ dashboard that set the bar for what queue tooling should feel
+like. OpenQueue ships that caliber of dashboard as one piece of a larger
+machine — tasks, retries, flows, schedules, and persistence, designed
+together with the UI rather than bolted on next to it.

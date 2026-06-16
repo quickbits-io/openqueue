@@ -1,0 +1,82 @@
+---
+title: Configuration
+description: Everything worker.config.ts accepts.
+---
+
+`worker.config.ts` is the single source of truth for a worker. The CLI loads
+it for `dev`, `build`, and `start`; pass `--config <path>` to use a different
+file.
+
+```ts title="worker.config.ts"
+import { defineConfig, postgresAdapter } from '@openqueue/sdk';
+
+export default defineConfig({
+  namespace: 'my-app',
+  dirs: ['./worker'],
+  exclude: ['**/*.test.ts'],
+  redis: {
+    url: process.env.REDIS_URL!,
+  },
+  concurrency: {
+    global: 8,
+    queues: { exports: 2 },
+  },
+  workbench: {
+    enabled: true,
+    title: 'Jobs',
+    basePath: '/workbench',
+  },
+});
+```
+
+## Reference
+
+| Field | Description |
+| --- | --- |
+| `namespace` | Prefix for every Redis key this worker touches. Lets multiple apps share one Redis. |
+| `dirs` | Directories scanned for exported `task()` definitions. |
+| `tasks` | Explicit task modules (`{ module, export? }`) instead of — or alongside — directory scanning. |
+| `exclude` | Glob patterns removed from discovery (tests, fixtures). |
+| `redis.url` | Redis connection string. |
+| `redis.bullPrefix` | Override the BullMQ key prefix. |
+| `storage.adapter` | A `QueueStorage` implementation — use `postgresAdapter` to persist run history. |
+| `drains` | Sinks for run lifecycle events; `consoleDrain()` ships in the box, `composeDrains()` combines several. |
+| `concurrency.global` | Worker-wide cap on parallel jobs. |
+| `concurrency.queues` | Per-queue caps, by queue name. |
+| `metrics` | Toggle metric collection and key prefix. |
+| `workbench` | Dashboard options — see below. |
+| `build` | `outDir`, `extraFiles`, `external` for `openqueue build`. |
+
+## Workbench options
+
+| Field | Description |
+| --- | --- |
+| `enabled` | Serve the dashboard from this worker. |
+| `title` | Name shown in the dashboard chrome. |
+| `basePath` | Mount path, for example `/workbench`. |
+| `readonly` | Disable mutating actions (retry, enqueue, pause). |
+| `auth` | `{ username, password }` for basic auth. |
+| `tagFields` | Payload field names that Workbench can extract as filterable tags. |
+
+## Persistent run history
+
+Redis keeps recent state; Postgres keeps the paper trail. Wire the Drizzle
+adapter to persist runs, schedules, and alerts:
+
+```ts
+import { defineConfig, postgresAdapter } from '@openqueue/sdk';
+import { db } from './src/db';
+import { queueSchema } from './src/queue-schema';
+
+export default defineConfig({
+  namespace: 'my-app',
+  dirs: ['./worker'],
+  redis: { url: process.env.REDIS_URL! },
+  storage: {
+    adapter: postgresAdapter({ db, schema: queueSchema }),
+  },
+});
+```
+
+See [Persistence](/docs/persistence) for the table definitions, how to
+generate the Drizzle migrations, and retention patterns.

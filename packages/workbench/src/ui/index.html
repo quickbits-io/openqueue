@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workbench</title>
+    <link rel="icon" href="./app-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./app-icon.svg" />
+    <!-- Prevent flash of wrong theme by setting dark class immediately -->
+    <script>
+      (() => {
+        var stored = localStorage.getItem('workbench:theme');
+        var isDark = stored ? stored === 'dark' : true;
+        if (isDark) document.documentElement.classList.add('dark');
+      })();
+    </script>
+    <style>
+      /* Prevent flash - set background immediately */
+      html { background-color: hsl(0 0% 98%); }
+      html.dark { background-color: hsl(0 0% 4%); }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

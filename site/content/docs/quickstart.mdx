@@ -1,0 +1,96 @@
+---
+title: Quickstart
+description: From zero to a running worker with a dashboard in five minutes.
+---
+
+You need a Redis URL and Bun (or Node). That's it.
+
+## 1. Install and initialize
+
+```bash
+bun add @openqueue/sdk
+bun add -d @openqueue/cli
+bunx openqueue init
+```
+
+The CLI package ships the `openqueue` binary — once it's installed locally,
+`bunx openqueue` resolves it from your `node_modules`. (Without installing
+first, use `bunx @openqueue/cli init`.)
+
+`init` scaffolds a config, a starter task, `.env` files, and a Dockerfile,
+and adds `worker:dev` / `worker:build` / `worker:start` scripts to your
+`package.json`. The two files you'll touch:
+
+```ts title="worker.config.ts"
+import { defineConfig } from '@openqueue/sdk';
+
+export default defineConfig({
+  namespace: process.env.OPENQUEUE_NAMESPACE ?? 'my-app',
+  dirs: ['./worker'],
+  redis: { url: process.env.REDIS_URL! },
+  concurrency: {
+    global: 8,
+  },
+  workbench: {
+    enabled: true,
+    title: 'Jobs',
+    basePath: '/workbench',
+  },
+});
+```
+
+```ts title="worker/example.ts"
+import { task } from '@openqueue/sdk';
+import { z } from 'zod';
+
+export const exampleTask = task({
+  id: 'example',
+  schema: z.object({
+    message: z.string().default('Hello from OpenQueue'),
+  }),
+  run: async (payload, ctx) => {
+    ctx.logger.info('received message', { message: payload.message });
+    await ctx.progress({ step: 'done' });
+    return { ok: true };
+  },
+});
+```
+
+## 2. Run the worker
+
+```bash
+bunx openqueue dev
+```
+
+`dev` loads `worker.config.ts`, discovers every exported task under `dirs`,
+starts the BullMQ workers, and serves Workbench. It watches your task files
+and restarts on change.
+
+Open Workbench at the printed URL and you'll see your queue, live counters,
+and a **Test** page with an editable JSON body — enqueue a job straight from
+the browser.
+
+## 3. Trigger from your app
+
+```ts
+import { exampleTask } from './worker/example';
+
+await exampleTask.trigger({ message: 'deploy finished' });
+```
+
+`trigger` validates the payload against the schema, enqueues the job, and
+returns an `EnqueueResult` with the job id. Options let you delay or
+deduplicate:
+
+```ts
+await exampleTask.trigger(payload, { delay: 60_000 });
+```
+
+## 4. Ship it
+
+```bash
+bunx openqueue build   # bundles tasks into .openqueue/build/manifest.mjs
+bunx openqueue start   # runs the worker from the manifest
+```
+
+See [Deployment](/docs/deployment) for Docker and production notes.

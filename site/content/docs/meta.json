@@ -1,0 +1,17 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "quickstart",
+    "tasks",
+    "configuration",
+    "workbench",
+    "flows",
+    "schedules",
+    "errors",
+    "persistence",
+    "deployment",
+    "scaling",
+    "roadmap"
+  ]
+}

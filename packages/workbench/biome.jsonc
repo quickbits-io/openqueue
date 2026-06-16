@@ -1,0 +1,32 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
+  "extends": "//",
+  "css": {
+    "parser": {
+      "cssModules": false,
+      "allowWrongLineComments": false
+    }
+  },
+  "files": {
+    "includes": ["**", "!**/*.css", "!dist"]
+  },
+  "linter": {
+    "rules": {
+      // The dashboard is a custom, mouse-first UI: interactive non-semantic
+      // elements and array-index keys on static lists are intentional here.
+      "a11y": {
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "useSemanticElements": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noArrayIndexKey": "off",
+        "useBiomeIgnoreFolder": "off"
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "off"
+      }
+    }
+  }
+}

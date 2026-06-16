@@ -1,0 +1,93 @@
+---
+title: Scaling
+description: Replicas, worker pools, and putting heavy queues on bigger machines.
+---
+
+BullMQ coordinates workers through Redis, so you can run as many worker
+processes as you want against the same namespace. That gives you two axes:
+
+- **Replicas** — run more copies of the same worker. Jobs are distributed
+  automatically; nothing to configure.
+- **Pools** — run *different* workers that each own a subset of queues, so
+  you can put CPU-heavy queues on big machines and light ones on small,
+  cheap ones.
+
+## How pools work
+
+A worker process only creates BullMQ workers for the queues of the tasks it
+loaded. Which tasks it loads is decided entirely by its config file — so a
+pool is just a second config pointed at a subset of your task files, started
+with `--config`.
+
+First, route heavy tasks onto their own queue with the `queue` option:
+
+```ts title="worker/video/transcode.ts"
+export const transcodeVideo = task({
+  id: 'transcode-video',
+  queue: 'video',
+  schema,
+  concurrency: 2,
+  run: async (payload, ctx) => { /* … */ },
+});
+```
+
+Then give each machine class its own config — same `namespace`, same
+`redis.url`, different task directories and sizing:
+
+```ts title="worker.config.ts"
+// default pool — small machines
+export default defineConfig({
+  namespace: 'my-app',
+  dirs: ['./worker'],
+  exclude: ['**/video/**'],
+  redis: { url: process.env.REDIS_URL! },
+  concurrency: { global: 16 },
+  workbench: { enabled: true },
+});
+```
+
+```ts title="worker.video.config.ts"
+// video pool — big machines
+export default defineConfig({
+  namespace: 'my-app',
+  dirs: ['./worker/video'],
+  redis: { url: process.env.REDIS_URL! },
+  concurrency: { global: 2 },
+  workbench: { enabled: false },
+});
+```
+
+```bash
+# on the small machines
+bunx openqueue start
+
+# on the big machines
+bunx openqueue start --config worker.video.config.ts
+```
+
+Because both pools share a namespace and a Redis, this is invisible to the
+rest of your app: `transcodeVideo.trigger(payload)` enqueues to the `video`
+queue from anywhere, and only the big machines pick it up.
+
+## Sizing a pool
+
+- `concurrency.global` caps parallel jobs per process — keep it low for
+  CPU-bound pools, high for I/O-bound ones.
+- `concurrency.queues` overrides per queue when one pool serves several.
+- Per-task `concurrency` is the within-queue default; the queue's worker
+  uses the highest concurrency among its tasks unless overridden.
+- Replicas multiply all of the above — two video replicas with
+  `global: 2` give you four concurrent transcodes.
+
+## Caveats
+
+- Keep `namespace` identical across pools. A different namespace is a
+  different app: separate queues, separate catalog, separate dashboard.
+- Enable Workbench on one pool only (or [mount it in your own
+  app](/docs/workbench)). Every pool would serve a working dashboard, but
+  one is enough.
+- On boot, each pool republishes the namespace's task catalog with only the
+  tasks *it* loaded — last writer wins. Triggering by imported task
+  definition is unaffected, but `trigger('task-id', …)` by string and the
+  Test console only resolve tasks from the most recently booted pool. In
+  split topologies, prefer triggering via the imported definition.
