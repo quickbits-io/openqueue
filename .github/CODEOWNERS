@@ -1,0 +1,9 @@
+# Code owners are requested for review automatically and — with the branch
+# ruleset's "require review from code owners" — must approve before a merge.
+# Swap @krzkz94 for a team (e.g. @quickbits-io/maintainers) as the project grows.
+
+*              @krzkz94
+
+# Extra scrutiny for anything that runs in CI or can publish to npm.
+/.github/      @krzkz94
+/.changeset/   @krzkz94
