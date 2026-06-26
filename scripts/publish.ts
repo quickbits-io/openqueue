@@ -5,11 +5,11 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 // Publish every public workspace package with `bun publish`. Bun rewrites the
-// `workspace:` protocol to the dependency's real version at pack time (reading
-// the sibling's local package.json), so internal deps resolve for npm consumers
-// without any manifest mutation. Publish order doesn't matter — the rewrite is
-// filesystem-based, not registry-based. After publishing, `changeset tag`
-// creates the git tags the release workflow pushes.
+// `workspace:` protocol to a real version at pack time, resolved from the
+// workspace versions recorded in bun.lock — so the lockfile must match the
+// bumped manifests (the `version-packages` script refreshes it after bumping).
+// Publish order doesn't matter. After publishing, `changeset tag` creates the
+// git tags the release workflow pushes.
 
 const rootDir = join(import.meta.dirname, '..');
 const packagesDir = join(rootDir, 'packages');
