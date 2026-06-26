@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/workbench",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "OpenQueue Workbench — an embeddable dashboard (queues, runs, schedules, flows, metrics, alerts) for BullMQ / OpenQueue, with Hono and Next.js adapters.",
   "license": "MIT",
   "type": "module",

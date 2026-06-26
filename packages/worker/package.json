@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/worker",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "OpenQueue worker runtime — runs your tasks, schedules, and flows, and serves the workbench. Bun-native.",
   "license": "MIT",
   "type": "module",
