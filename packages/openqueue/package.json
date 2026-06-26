@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "OpenQueue SDK — define and enqueue typed, durable background jobs. The main entrypoint for OpenQueue.",
   "license": "MIT",
   "type": "module",
