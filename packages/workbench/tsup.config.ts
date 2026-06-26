@@ -9,6 +9,7 @@ export default defineConfig({
     index: 'src/index.ts',
     hono: 'src/hono.ts',
     next: 'src/next.ts',
+    ui: 'src/ui/index.ts',
   },
   format: ['esm'],
   dts: true,
