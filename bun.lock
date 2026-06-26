@@ -30,7 +30,7 @@
     },
     "packages/cli": {
       "name": "@openqueue/cli",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "openqueue": "./dist/index.js",
       },
@@ -47,7 +47,7 @@
     },
     "packages/core": {
       "name": "@openqueue/core",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "bullmq": "^5.71.1",
         "cron-parser": "^4.9.0",
@@ -74,7 +74,7 @@
     },
     "packages/openqueue": {
       "name": "@openqueue/sdk",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@openqueue/core": "workspace:*",
       },
@@ -86,7 +86,7 @@
     },
     "packages/workbench": {
       "name": "@openqueue/workbench",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@hono/zod-openapi": "^1.4.0",
         "@openqueue/core": "workspace:*",
@@ -142,7 +142,7 @@
     },
     "packages/worker": {
       "name": "@openqueue/worker",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@openqueue/core": "workspace:*",
         "@openqueue/workbench": "workspace:*",
