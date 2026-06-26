@@ -31,7 +31,7 @@
     "format": "biome format --write .",
     "clean": "turbo run clean && rm -rf node_modules",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "node node_modules/@changesets/cli/bin.js version",
     "release": "turbo run build --filter='./packages/*' && bun run scripts/publish.ts"
   },
   "devDependencies": {
