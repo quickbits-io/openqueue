@@ -34,11 +34,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Configure npm auth
-        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
       # Opens/updates a "Version Packages" PR when changesets are present, and
       # publishes to npm (running `bun run release`) once that PR is merged.
       - name: Create release PR or publish
@@ -50,4 +45,6 @@ jobs:
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # `bun publish` reads the registry token from NPM_CONFIG_TOKEN; it does
+          # not pick up a token written to ~/.npmrc when publishing per-package.
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
