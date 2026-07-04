@@ -27,12 +27,18 @@ export async function withJobLogs<T>(
 ): Promise<T> {
   installConsoleBridge();
 
-  const pending: Promise<unknown>[] = [];
+  // Write-through: each line is sent as soon as the previous write settles,
+  // in emit order, and nothing is ever dropped. Chaining retains only the
+  // not-yet-sent backlog (bounded by actual Redis lag) — the previous
+  // implementation kept a promise for every line for the whole run, which
+  // grew without bound on long-running jobs.
+  let tail: Promise<unknown> = Promise.resolve();
   let closed = false;
+
   const scope: JobLogScope = {
     write: (line) => {
       if (closed) return;
-      pending.push(job.log(line).catch(() => undefined));
+      tail = tail.then(() => job.log(line)).catch(() => undefined);
     },
   };
 
@@ -40,7 +46,7 @@ export async function withJobLogs<T>(
     return await activeScope.run(scope, fn);
   } finally {
     closed = true;
-    await flush(pending);
+    await tail;
   }
 }
 
@@ -58,9 +64,4 @@ function installConsoleBridge(): void {
       trace.getActiveSpan()?.addEvent(line, { 'log.level': method });
     };
   }
-}
-
-async function flush(pending: Promise<unknown>[]): Promise<void> {
-  if (pending.length === 0) return;
-  await Promise.allSettled(pending);
 }
