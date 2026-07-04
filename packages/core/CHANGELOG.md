@@ -1,5 +1,12 @@
 # @openqueue/core
 
+## [0.1.3](https://github.com/quickbits-io/openqueue/compare/core-v0.1.2...core-v0.1.3) (2026-07-04)
+
+
+### Bug Fixes
+
+* **core:** stream job logs write-through instead of retaining every write ([#24](https://github.com/quickbits-io/openqueue/issues/24)) ([d644a86](https://github.com/quickbits-io/openqueue/commit/d644a8694db9ccd9d5b07fb623ef42cd06e9563d))
+
 ## 0.1.2
 
 ### Patch Changes

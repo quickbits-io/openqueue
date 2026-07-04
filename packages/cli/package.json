@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "OpenQueue CLI — scaffold, develop, build, and run OpenQueue workers. Bun-native.",
   "license": "MIT",
   "type": "module",
