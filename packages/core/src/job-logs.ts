@@ -65,4 +65,3 @@ function installConsoleBridge(): void {
     };
   }
 }
-
