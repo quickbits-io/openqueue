@@ -1,0 +1,7 @@
+{
+  "packages/cli": "0.1.2",
+  "packages/core": "0.1.2",
+  "packages/openqueue": "0.1.2",
+  "packages/workbench": "0.1.2",
+  "packages/worker": "0.1.2"
+}

@@ -30,13 +30,10 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "clean": "turbo run clean && rm -rf node_modules",
-    "changeset": "changeset",
-    "version-packages": "changeset version && bun install --lockfile-only",
     "release": "turbo run build --filter='./packages/*' && bun run scripts/publish.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.12",
-    "@changesets/cli": "^2.29.7",
     "@types/node": "^22.10.10",
     "tsup": "^8.5.0",
     "turbo": "^2.7.5",
