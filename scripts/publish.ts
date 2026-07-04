@@ -17,6 +17,21 @@ const entries = await readdir(packagesDir, { withFileTypes: true });
 
 const published: string[] = [];
 
+// npm answers a publish-over-existing-version with a 403, which the workflow
+// surfaced as a failed release on every no-changeset merge. Skip versions the
+// registry already has so the publish step is idempotent; a registry outage
+// falls through to the publish attempt, where the real error surfaces.
+async function alreadyPublished(name: string, version: string) {
+  try {
+    const response = await fetch(
+      `https://registry.npmjs.org/${name.replace('/', '%2f')}/${version}`,
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 for (const entry of entries) {
   if (!entry.isDirectory()) continue;
 
@@ -24,7 +39,14 @@ for (const entry of entries) {
   const manifest: { name?: string; version?: string; private?: boolean } =
     JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
 
-  if (manifest.private || !manifest.name) continue;
+  if (manifest.private || !manifest.name || !manifest.version) continue;
+
+  if (await alreadyPublished(manifest.name, manifest.version)) {
+    console.log(
+      `Skipping ${manifest.name}@${manifest.version} — already on the registry.`,
+    );
+    continue;
+  }
 
   console.log(`\nPublishing ${manifest.name}@${manifest.version}…`);
   const { status } = spawnSync('bun', ['publish', '--no-git-checks'], {
