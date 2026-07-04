@@ -7,15 +7,29 @@ import { join } from 'node:path';
 // Publish every public workspace package with `bun publish`. Bun rewrites the
 // `workspace:` protocol to a real version at pack time, resolved from the
 // workspace versions recorded in bun.lock — so the lockfile must match the
-// bumped manifests (the `version-packages` script refreshes it after bumping).
-// Publish order doesn't matter. After publishing, `changeset tag` creates the
-// git tags the release workflow pushes.
+// bumped manifests (the release workflow runs a fresh `bun install` first).
+// Publish order doesn't matter. Tags and GitHub releases are release-please's
+// job, not this script's.
 
 const rootDir = join(import.meta.dirname, '..');
 const packagesDir = join(rootDir, 'packages');
 const entries = await readdir(packagesDir, { withFileTypes: true });
 
-const published: string[] = [];
+// npm answers a publish-over-existing-version with a 403, so a re-run of the
+// publish job must skip what already landed. A registry outage falls through
+// to the publish attempt, where the real error surfaces.
+async function alreadyPublished(name: string, version: string) {
+  try {
+    const response = await fetch(
+      `https://registry.npmjs.org/${name.replace('/', '%2f')}/${version}`,
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+let published = 0;
 
 for (const entry of entries) {
   if (!entry.isDirectory()) continue;
@@ -24,7 +38,14 @@ for (const entry of entries) {
   const manifest: { name?: string; version?: string; private?: boolean } =
     JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
 
-  if (manifest.private || !manifest.name) continue;
+  if (manifest.private || !manifest.name || !manifest.version) continue;
+
+  if (await alreadyPublished(manifest.name, manifest.version)) {
+    console.log(
+      `Skipping ${manifest.name}@${manifest.version} — already on the registry.`,
+    );
+    continue;
+  }
 
   console.log(`\nPublishing ${manifest.name}@${manifest.version}…`);
   const { status } = spawnSync('bun', ['publish', '--no-git-checks'], {
@@ -37,18 +58,11 @@ for (const entry of entries) {
     process.exit(status ?? 1);
   }
 
-  published.push(manifest.name);
+  published++;
 }
 
-if (published.length === 0) {
-  console.log('No public packages to publish.');
-  process.exit(0);
-}
-
-console.log(`\nTagging ${published.length} published package(s)…`);
-const { status } = spawnSync('bun', ['x', 'changeset', 'tag'], {
-  cwd: rootDir,
-  stdio: 'inherit',
-});
-
-process.exit(status ?? 1);
+console.log(
+  published === 0
+    ? 'Nothing to publish — registry already up to date.'
+    : `\nPublished ${published} package(s).`,
+);
