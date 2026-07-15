@@ -1,5 +1,12 @@
 # @openqueue/core
 
+## [0.1.4](https://github.com/quickbits-io/openqueue/compare/core-v0.1.3...core-v0.1.4) (2026-07-15)
+
+
+### Bug Fixes
+
+* **core:** support cron parser in Node ESM ([#35](https://github.com/quickbits-io/openqueue/issues/35)) ([8d20258](https://github.com/quickbits-io/openqueue/commit/8d2025835ce0fae0f709bc84e83b0b68315f1776))
+
 ## [0.1.3](https://github.com/quickbits-io/openqueue/compare/core-v0.1.2...core-v0.1.3) (2026-07-04)
 
 
