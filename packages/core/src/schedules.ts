@@ -1,4 +1,4 @@
-import { parseExpression } from 'cron-parser';
+import cronParser from 'cron-parser';
 import type { Redis } from 'ioredis';
 import { z } from 'zod';
 import {
@@ -339,11 +339,12 @@ export function assertCron(cron: string): void {
 }
 
 function nextCronStep(cron: string, timezone: string, from: Date): Date {
-  return parseExpression(cron, {
-    currentDate: from,
-    tz: timezone === 'UTC' ? undefined : timezone,
-    utc: timezone === 'UTC',
-  })
+  return cronParser
+    .parseExpression(cron, {
+      currentDate: from,
+      tz: timezone === 'UTC' ? undefined : timezone,
+      utc: timezone === 'UTC',
+    })
     .next()
     .toDate();
 }
