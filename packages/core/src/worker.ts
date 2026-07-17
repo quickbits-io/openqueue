@@ -8,21 +8,22 @@ import {
   SpanStatusCode,
   trace,
 } from '@opentelemetry/api';
-import {
-  type ConnectionOptions,
-  type Job,
-  UnrecoverableError,
-  Worker,
-} from 'bullmq';
+import type { Worker } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { composeDrains } from './compose';
-import { isNonRetryable, serializeError } from './errors';
+import { isNonRetryable, NonRetryableError, serializeError } from './errors';
 import { withJobLogs } from './job-logs';
 import { consoleLogger } from './logger';
-import { bullPrefix, type NamespaceOptions } from './namespace';
+import type { NamespaceOptions } from './namespace';
 import { buildSnapshot } from './snapshot';
 import { withRunContext } from './span-export';
 import { trigger } from './task';
+import { createBullmqTransport } from './transport/bullmq';
+import type {
+  ActiveTransportJob,
+  ConsumeOptions,
+  TransportConsumer,
+} from './transport/types';
 import type {
   QueueDrain,
   QueueRunSnapshot,
@@ -34,6 +35,12 @@ export type QueueConcurrency = Record<string, number>;
 
 export interface CreateWorkerOptions extends NamespaceOptions {
   connection: Redis;
+  drain?: QueueDrain;
+  globalConcurrency?: number;
+  queueConcurrency?: QueueConcurrency;
+}
+
+export interface WorkerConsumerOptions {
   drain?: QueueDrain;
   globalConcurrency?: number;
   queueConcurrency?: QueueConcurrency;
@@ -53,70 +60,73 @@ export function createWorker(
   jobs: TaskDefinition[],
   options: CreateWorkerOptions,
 ): Worker[] {
+  const transport = createBullmqTransport({
+    producer: options.connection,
+    consumer: options.connection,
+    namespace: options.namespace,
+    bullPrefix: options.bullPrefix,
+  });
+  return createWorkerConsumers(jobs, transport, {
+    drain: options.drain,
+    globalConcurrency: options.globalConcurrency,
+    queueConcurrency: options.queueConcurrency,
+  }).map((consumer) => consumer.worker);
+}
+
+export function createWorkerConsumers<C extends TransportConsumer>(
+  jobs: TaskDefinition[],
+  transport: { consume(queue: string, options: ConsumeOptions): C },
+  options: WorkerConsumerOptions = {},
+): C[] {
   const drain = composeDrains(options.drain);
   const limiter = createLimiter(options.globalConcurrency);
   const groups = groupJobsByQueue(jobs, options.queueConcurrency);
 
-  const workers: Worker[] = [];
-  for (const {
-    queue: queueName,
-    jobs: defs,
-    concurrency,
-    maxStalledCount,
-  } of groups) {
-    const defByName = new Map(defs.map((d) => [d.name, d]));
+  return groups.map(
+    ({ queue: queueName, jobs: defs, concurrency, maxStalledCount }) => {
+      const defByName = new Map(defs.map((d) => [d.name, d]));
 
-    const worker = new Worker(
-      queueName,
-      async (job: Job) => {
-        // Captured before the limiter so Dequeued → Started exposes time
-        // spent waiting on global concurrency plus run setup.
-        const dequeuedAt = Date.now();
-        return limiter(() => runJob(job, defByName, drain, dequeuedAt));
-      },
-      {
-        connection: options.connection as unknown as ConnectionOptions,
-        prefix: bullPrefix(options),
+      return transport.consume(queueName, {
         concurrency,
         ...(maxStalledCount !== undefined ? { maxStalledCount } : {}),
-      },
-    );
-
-    worker.on('failed', async (job, err) => {
-      if (!job) return;
-      const def = defByName.get(job.name);
-      if (!def) return;
-      await ensureRunIdentity(job);
-      const final = err instanceof UnrecoverableError || isNonRetryable(err);
-      const willRetry = !final && job.attemptsMade < (job.opts.attempts ?? 0);
-      const snapshot: QueueRunSnapshot = {
-        ...buildSnapshot({
-          job,
-          def,
-          status: willRetry ? 'reattempting' : 'failed',
-          willRetry,
-        }),
-        error: serializeError(err, { retryable: !final }),
-      };
-      await drain.handle({ type: 'fail', run: snapshot });
-    });
-
-    worker.on('completed', async (job) => {
-      const def = defByName.get(job.name);
-      if (!def) return;
-      await ensureRunIdentity(job);
-      const snapshot = buildSnapshot({ job, def, status: 'completed' });
-      await drain.handle({ type: 'complete', run: snapshot });
-    });
-
-    worker.on('error', (err) => {
-      console.error(`[queue] worker "${queueName}" error`, err);
-    });
-
-    workers.push(worker);
-  }
-
-  return workers;
+        isFinal: isNonRetryable,
+        process: (job) => {
+          // Captured before the limiter so Dequeued → Started exposes time
+          // spent waiting on global concurrency plus run setup.
+          const dequeuedAt = Date.now();
+          return limiter(() => runJob(job, defByName, drain, dequeuedAt));
+        },
+        onCompleted: async (job) => {
+          const def = defByName.get(job.name);
+          if (!def) return;
+          await ensureRunIdentity(job);
+          const snapshot = buildSnapshot({ job, def, status: 'completed' });
+          await drain.handle({ type: 'complete', run: snapshot });
+        },
+        onFailed: async (job, err, { final }) => {
+          if (!job) return;
+          const def = defByName.get(job.name);
+          if (!def) return;
+          await ensureRunIdentity(job);
+          const willRetry =
+            !final && job.attemptsMade < (job.opts.attempts ?? 0);
+          const snapshot: QueueRunSnapshot = {
+            ...buildSnapshot({
+              job,
+              def,
+              status: willRetry ? 'reattempting' : 'failed',
+              willRetry,
+            }),
+            error: serializeError(err, { retryable: !final }),
+          };
+          await drain.handle({ type: 'fail', run: snapshot });
+        },
+        onError: (err) => {
+          console.error(`[queue] worker "${queueName}" error`, err);
+        },
+      });
+    },
+  );
 }
 
 export function groupJobsByQueue(
@@ -172,14 +182,15 @@ function positiveInt(value: number): number {
 }
 
 async function runJob(
-  job: Job,
+  job: ActiveTransportJob,
   defByName: Map<string, TaskDefinition>,
   drain: QueueDrain,
   dequeuedAt: number,
 ): Promise<unknown> {
   const def = defByName.get(job.name);
   if (!def) {
-    throw new UnrecoverableError(`No handler registered for job: ${job.name}`);
+    // Non-retryable: the transport converts this into a permanent failure.
+    throw new NonRetryableError(`No handler registered for job: ${job.name}`);
   }
 
   await ensureRunIdentity(job);
@@ -275,11 +286,7 @@ async function runJob(
       } catch (err) {
         errored = true;
         recordSpanError(attemptSpan, err);
-        if (isNonRetryable(err)) {
-          const message =
-            err instanceof Error ? err.message : String(err ?? 'Unknown error');
-          throw new UnrecoverableError(message);
-        }
+        // Rethrow the original error; the transport decides retry vs. final.
         throw err;
       } finally {
         if (!errored) attemptSpan.setStatus({ code: SpanStatusCode.OK });
@@ -290,7 +297,7 @@ async function runJob(
   );
 }
 
-async function ensureRunIdentity(job: Job): Promise<void> {
+async function ensureRunIdentity(job: ActiveTransportJob): Promise<void> {
   const data = job.data;
   if (
     data &&

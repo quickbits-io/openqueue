@@ -1,13 +1,12 @@
 import cronParser from 'cron-parser';
-import type { Redis } from 'ioredis';
 import { z } from 'zod';
 import {
   DEFAULT_NAMESPACE,
   type NamespaceOptions,
   resolveNamespace,
 } from './namespace';
-import { createQueue } from './queue';
 import { deriveDefaultInput, task } from './task';
+import { assertCapability, type QueueTransport } from './transport/types';
 import type {
   EnqueueOptions,
   EnqueueResult,
@@ -35,8 +34,8 @@ function queueNamePart(value: string): string {
   return value.replace(/:/g, '-');
 }
 
-interface CreateQueueSchedulesOptions extends NamespaceOptions {
-  redis: Redis;
+interface CreateQueueSchedulesWithTransportOptions extends NamespaceOptions {
+  transport: QueueTransport;
   storage: QueueState;
   resolveTask(id: string): Promise<QueueCatalogEntry>;
   trigger<I>(
@@ -62,28 +61,26 @@ const tickSchema = z.object({
   scheduledAt: z.string(),
 });
 
-export function createQueueSchedules({
-  redis,
+export function createQueueSchedulesWithTransport({
+  transport,
   storage,
   resolveTask,
   trigger,
   ...namespaceOptions
-}: CreateQueueSchedulesOptions): QueueScheduleController {
+}: CreateQueueSchedulesWithTransportOptions): QueueScheduleController {
   const namespace = resolveNamespace(namespaceOptions);
-  const queue = createQueue(
-    scheduleQueueNameFor(namespace.namespace),
-    redis,
-    namespace,
-  );
+  const queueName = scheduleQueueNameFor(namespace.namespace);
 
   async function enqueueNext(schedule: QueueSchedule): Promise<void> {
     await removeScheduleJob(schedule.id);
     if (!schedule.active || !schedule.nextRun) return;
 
+    assertCapability(transport, 'delay');
     const scheduledAt = schedule.nextRun.toISOString();
-    await queue.add(
-      scheduleTickJobName,
-      {
+    await transport.enqueue(queueName, {
+      id: scheduleJobId(schedule.id, scheduledAt),
+      name: scheduleTickJobName,
+      data: {
         __input: {
           scheduleId: schedule.id,
           scheduledAt,
@@ -92,26 +89,25 @@ export function createQueueSchedules({
         __meta: { ...schedule.meta, tags: ['queue:schedule'] },
         __metadata: {},
       },
-      {
-        jobId: scheduleJobId(schedule.id, scheduledAt),
-        delay: Math.max(schedule.nextRun.getTime() - Date.now(), 0),
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 1000 },
+      delay: Math.max(schedule.nextRun.getTime() - Date.now(), 0),
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 1000 },
+      retention: {
         removeOnComplete: true,
         removeOnFail: { age: 30 * 24 * 3600, count: 1000 },
       },
-    );
+    });
   }
 
   async function removeScheduleJob(id: string): Promise<void> {
-    const legacy = await queue.getJob(legacyScheduleJobId(id));
+    const legacy = await transport.getJob(queueName, legacyScheduleJobId(id));
     await legacy?.remove().catch(() => undefined);
 
-    const delayed = await queue.getDelayed(0, -1);
+    const delayed = await transport.listDelayed(queueName);
     await Promise.all(
-      delayed.map((job) =>
-        job && scheduleTickMatches(job.name, job.data, id)
-          ? job.remove().catch(() => undefined)
+      delayed.map((handle) =>
+        handle && scheduleTickMatches(handle.name, handle.data, id)
+          ? handle.remove().catch(() => undefined)
           : undefined,
       ),
     );
@@ -268,7 +264,7 @@ export function createQueueSchedules({
       if (failed) throw triggerError;
     },
 
-    close: () => queue.close(),
+    close: async () => undefined,
   };
 
   return api;

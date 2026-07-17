@@ -1,4 +1,9 @@
-import type { QueueRunStore, QueueRunsApi, RunStatus } from './types';
+import type {
+  CancelRunResult,
+  QueueRunStore,
+  QueueRunsApi,
+  RunStatus,
+} from './types';
 
 const defaultPollIntervalMs = 1000;
 const defaultPollMaxAttempts = 500;
@@ -10,7 +15,10 @@ const terminalRunStatuses = new Set<RunStatus>([
   'expired',
 ]);
 
-export function createRunsApi(store: QueueRunStore): QueueRunsApi {
+export function createRunsApi(
+  store: QueueRunStore,
+  cancel: (id: string) => Promise<CancelRunResult>,
+): QueueRunsApi {
   const runs: QueueRunsApi = {
     list: (options) => store.list(options),
     retrieve: async (id) => {
@@ -21,19 +29,20 @@ export function createRunsApi(store: QueueRunStore): QueueRunsApi {
       const maxAttempts = options?.maxAttempts ?? defaultPollMaxAttempts;
       for (let attempts = 0; attempts++ < maxAttempts; ) {
         const run = await runs.retrieve(id);
-        if (run && isTerminalStatus(run.status)) return run;
+        if (run && isTerminalRunStatus(run.status)) return run;
         await sleep(options?.pollIntervalMs ?? defaultPollIntervalMs);
       }
       throw new Error(
         `Run ${id} did not complete after ${maxAttempts} attempts`,
       );
     },
+    cancel,
   };
 
   return runs;
 }
 
-function isTerminalStatus(status: RunStatus): boolean {
+export function isTerminalRunStatus(status: RunStatus): boolean {
   return terminalRunStatuses.has(status);
 }
 

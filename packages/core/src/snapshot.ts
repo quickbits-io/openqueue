@@ -1,4 +1,4 @@
-import type { Job } from 'bullmq';
+import type { ActiveTransportJob } from './transport/types';
 import type {
   EnqueueMeta,
   QueueRunSnapshot,
@@ -7,7 +7,7 @@ import type {
 } from './types';
 
 interface BuildArgs {
-  job: Job;
+  job: ActiveTransportJob;
   def: TaskDefinition;
   status: RunStatus;
   willRetry?: boolean;

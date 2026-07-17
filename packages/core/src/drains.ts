@@ -50,6 +50,13 @@ export function consoleDrain(opts: ConsoleDrainOptions = {}): QueueDrain {
         return;
       }
 
+      if (event.type === 'cancel') {
+        console.log(
+          `${tag(color, 'CANCEL', GRAY)} ${prefix(run, color)} ${GRAY}canceled${RESET}`,
+        );
+        return;
+      }
+
       if (event.type === 'fail') {
         const verdict = run.willRetry
           ? `${YELLOW}will retry (${run.attempt}/${run.maxAttempts})${RESET}`

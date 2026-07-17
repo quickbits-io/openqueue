@@ -40,16 +40,21 @@ export function taskCatalogEntry(
   };
 }
 
-export async function publishQueueCatalog(
-  redis: Redis,
+export function queueCatalogEntries(
   tasks: TaskDefinition[],
-  stores: QueueCatalogStore[] = [],
+  updatedAt = new Date().toISOString(),
+): QueueCatalogEntry[] {
+  return tasks.map((def) => taskCatalogEntry(def, updatedAt));
+}
+
+export async function writeQueueCatalog(
+  redis: Redis,
+  entries: QueueCatalogEntry[],
   namespace = DEFAULT_NAMESPACE,
-): Promise<QueueCatalogEntry[]> {
+): Promise<void> {
   const key = catalogKey(namespace);
   const publishedAtKey = catalogPublishedAtKey(namespace);
-  const updatedAt = new Date().toISOString();
-  const entries = tasks.map((def) => taskCatalogEntry(def, updatedAt));
+  const updatedAt = entries[0]?.updatedAt ?? new Date().toISOString();
   const payload = Object.fromEntries(
     entries.map((entry) => [entry.id, JSON.stringify(entry)]),
   );
@@ -57,6 +62,16 @@ export async function publishQueueCatalog(
   await redis.del(key);
   if (entries.length > 0) await redis.hset(key, payload);
   await redis.set(publishedAtKey, updatedAt);
+}
+
+export async function publishQueueCatalog(
+  redis: Redis,
+  tasks: TaskDefinition[],
+  stores: QueueCatalogStore[] = [],
+  namespace = DEFAULT_NAMESPACE,
+): Promise<QueueCatalogEntry[]> {
+  const entries = queueCatalogEntries(tasks);
+  await writeQueueCatalog(redis, entries, namespace);
   await Promise.all(stores.map((store) => store.publish(entries)));
 
   return entries;
@@ -117,7 +132,7 @@ export function memoryQueueCatalogStore(
   };
 }
 
-function parseCatalogEntry(raw: string): QueueCatalogEntry {
+export function parseCatalogEntry(raw: string): QueueCatalogEntry {
   const value = JSON.parse(raw) as QueueCatalogEntry;
   return value;
 }

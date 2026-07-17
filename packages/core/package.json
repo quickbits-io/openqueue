@@ -34,6 +34,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js",
+      "default": "./dist/auth.js"
+    },
+    "./control": {
+      "types": "./dist/control.d.ts",
+      "import": "./dist/control.js",
+      "default": "./dist/control.js"
+    },
     "./drizzle": {
       "types": "./dist/drizzle.d.ts",
       "import": "./dist/drizzle.js",
@@ -43,6 +53,11 @@
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js",
       "default": "./dist/types.js"
+    },
+    "./world": {
+      "types": "./dist/world.d.ts",
+      "import": "./dist/world.js",
+      "default": "./dist/world.js"
     }
   },
   "files": [
@@ -61,6 +76,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "test": "vitest run",
+    "test:transport": "vitest run src/transport",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -68,6 +84,7 @@
     "cron-parser": "^4.9.0",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.10.1",
+    "jose": "^5.9.6",
     "zod": "^4.1.13"
   },
   "peerDependencies": {

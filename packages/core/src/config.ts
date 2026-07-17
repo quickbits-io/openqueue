@@ -1,7 +1,9 @@
 import type { Attributes } from '@opentelemetry/api';
 import type { SpanExporter } from '@opentelemetry/sdk-trace-base';
+import type { AuthStrategy } from './auth';
 import type { BackoffOptions, QueueDrain, QueueStorage } from './types';
 import type { QueueConcurrency } from './worker';
+import type { WorldFactory } from './world';
 
 export interface QueueConfigTaskModule {
   module: string;
@@ -13,10 +15,12 @@ export interface QueueConfig {
   dirs?: string[];
   tasks?: QueueConfigTaskModule | QueueConfigTaskModule[];
   exclude?: string[];
-  redis: {
+  redis?: {
     url: string;
     bullPrefix?: string;
   };
+  /** A non-BullMQ world (e.g. `@openqueue/world-postgres`). XOR with `redis`. */
+  world?: WorldFactory;
   storage?: {
     adapter: QueueStorage;
   };
@@ -34,11 +38,19 @@ export interface QueueConfig {
     title?: string;
     basePath?: string;
     readonly?: boolean;
-    auth?: {
-      username: string;
-      password: string;
-    };
+    /** Basic credentials (sugar for `[httpBasic(...)]`) or an ordered
+     *  {@link AuthStrategy} walk. Unset = dashboard open (existing behavior). */
+    auth?: { username: string; password: string } | AuthStrategy[];
     tagFields?: string[];
+  };
+  api?: {
+    /** Bearer token(s) for the /openqueue/v1 control API — sugar for a leading
+     *  `apiKey()` strategy. When neither `token` nor `auth` is set, the API is
+     *  open in development and locked (401) when NODE_ENV=production. */
+    token?: string | string[];
+    /** Ordered {@link AuthStrategy} walk for /openqueue/v1. Empty array = always
+     *  401 (fail-closed). With `token` also set, the token check runs first. */
+    auth?: AuthStrategy[];
   };
   build?: {
     outDir?: string;

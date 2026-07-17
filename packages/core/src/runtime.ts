@@ -1,29 +1,20 @@
 import { Redis, type Redis as RedisClient } from 'ioredis';
-import {
-  catalogEntryDefinition,
-  publishQueueCatalog,
-  readQueueCatalog,
-  resolveQueueCatalogTask,
-} from './catalog';
-import { composeDrains } from './compose';
+import { queueCatalogEntries } from './catalog';
 import {
   closeConnection,
   createConnection,
   type QueueConnection,
 } from './connection';
+import { composeWorldRuntime } from './control-compose';
 import { loadQueueTasks, type QueueTaskDiscovery } from './discovery';
-import { configureEnqueue, enqueue } from './enqueue';
+import { configureEnqueueTransport } from './enqueue';
 import { type NamespaceOptions, resolveNamespace } from './namespace';
-import { createQueue } from './queue';
-import { createRunsApi } from './runs';
-import {
-  createQueueSchedules,
-  type QueueScheduleController,
-  scheduleTickJob,
-} from './schedules';
+import type { createQueue } from './queue';
+import { type QueueScheduleController, scheduleTickJob } from './schedules';
 import { attachSpanStore } from './span-export';
-import { createRedisQueueState } from './state';
 import { bindQueueRuntime } from './task';
+import { isBullmqTransport } from './transport/bullmq';
+import type { TransportConsumer } from './transport/types';
 import type {
   AlertStore,
   EnqueueOptions,
@@ -37,7 +28,13 @@ import type {
   QueueStorage,
   TaskDefinition,
 } from './types';
-import { createWorker, type QueueConcurrency } from './worker';
+import {
+  type createWorker,
+  createWorkerConsumers,
+  type QueueConcurrency,
+} from './worker';
+import { type OpenQueueWorld, validateWorld, type WorldFactory } from './world';
+import { worldBullmq } from './world-bullmq';
 
 export interface QueueClientOptions extends NamespaceOptions {
   redis: RedisClient | { url: string };
@@ -60,7 +57,7 @@ export interface QueueClient {
   close(): Promise<void>;
 }
 
-export interface CreateQueueWorkerOptions extends NamespaceOptions {
+export interface CreateQueueWorkerRedisOptions extends NamespaceOptions {
   redis: { url: string } | QueueConnection;
   tasks: QueueTaskDiscovery | TaskDefinition[];
   catalog?: QueueCatalogStore | QueueCatalogStore[];
@@ -68,7 +65,26 @@ export interface CreateQueueWorkerOptions extends NamespaceOptions {
   drains?: QueueDrain[];
   globalConcurrency?: number;
   queueConcurrency?: QueueConcurrency;
+  world?: undefined;
 }
+
+/**
+ * World-backed worker options. The world owns its transport and durable store,
+ * so `redis`, `catalog`, and `storage` are deliberately absent — configure them
+ * inside the world factory instead.
+ */
+export interface CreateQueueWorkerWorldOptions extends NamespaceOptions {
+  world: WorldFactory;
+  tasks: QueueTaskDiscovery | TaskDefinition[];
+  drains?: QueueDrain[];
+  globalConcurrency?: number;
+  queueConcurrency?: QueueConcurrency;
+  redis?: undefined;
+}
+
+export type CreateQueueWorkerOptions =
+  | CreateQueueWorkerRedisOptions
+  | CreateQueueWorkerWorldOptions;
 
 export interface QueueWorkerRuntime {
   trigger<I, O = unknown>(
@@ -87,54 +103,53 @@ export interface QueueWorkerRuntime {
   queues: Map<string, ReturnType<typeof createQueue>>;
 }
 
+/** Shared wiring options for the world-composed runtime factories. */
+export interface FromWorldOptions extends NamespaceOptions {
+  drains?: Array<QueueDrain | false | null | undefined>;
+  /** Ownership cleanup (e.g. a caller-owned Redis connection) run last. */
+  onClose?: () => Promise<void>;
+}
+
+export interface WorkerFromWorldOptions extends FromWorldOptions {
+  tasks: TaskDefinition[];
+  globalConcurrency?: number;
+  queueConcurrency?: QueueConcurrency;
+}
+
 export function createQueueClient(options: QueueClientOptions): QueueClient {
   const namespace = resolveNamespace(options);
   const { redis, close } = resolveClientRedis(options.redis);
-  const state = createRedisQueueState(redis, options.storage, namespace);
-  const stores = normalizeStores(options.catalog, options.storage);
-  const drain = composeDrains(
-    state,
-    options.storage,
-    ...(options.drains ?? []),
+  const world = validateWorld(
+    worldBullmq({
+      producer: redis,
+      storage: options.storage,
+      catalogFallbacks: normalizeStores(options.catalog, options.storage),
+    })({ namespace }),
   );
-  configureEnqueue({ redis, drain, ...namespace });
-
-  const trigger = async <I, O = unknown>(
-    target: string | TaskDefinition<I, O>,
-    input: I,
-    opts?: EnqueueOptions,
-  ) => {
-    if (typeof target !== 'string') return enqueue(target, input, opts);
-    const entry = await resolveTask(redis, stores, target, namespace.namespace);
-    return enqueue(catalogEntryDefinition(entry), input, opts);
-  };
-
-  const schedules = createQueueSchedules({
-    redis,
-    storage: state,
-    resolveTask: (id) => resolveTask(redis, stores, id, namespace.namespace),
-    trigger,
+  return createQueueClientFromWorld(world, {
+    drains: [options.storage, ...(options.drains ?? [])],
+    onClose: close,
     ...namespace,
   });
-  const runs = createRunsApi(state.runs);
+}
+
+export function createQueueClientFromWorld(
+  world: OpenQueueWorld,
+  options: FromWorldOptions = {},
+): QueueClient {
+  const parts = composeWorldRuntime(world, options);
+  configureEnqueueTransport({ transport: world.transport, drain: parts.drain });
 
   const client: QueueClient = {
-    catalog: {
-      read: () => readCatalog(redis, stores, namespace.namespace),
-      resolve: (id) =>
-        resolveTask(redis, stores, id, namespace.namespace).then(
-          (entry) => entry,
-        ),
-    },
-    trigger,
-    schedules,
-    runs,
-    spans: options.storage?.spans,
-    alerts: state.alerts,
+    catalog: parts.catalog,
+    trigger: parts.trigger,
+    schedules: parts.schedules,
+    runs: parts.runs,
+    spans: world.store.spans,
+    alerts: world.store.alerts,
     close: async () => {
-      await closeSchedules(schedules);
-      await state.alerts.close?.();
-      await close();
+      await parts.close();
+      await options.onClose?.();
     },
   };
 
@@ -146,79 +161,89 @@ export async function createQueueWorker(
   options: CreateQueueWorkerOptions,
 ): Promise<QueueWorkerRuntime> {
   const namespace = resolveNamespace(options);
+
+  if (options.world) {
+    const tasks = await loadQueueTasks(options.tasks);
+    const world = validateWorld(await options.world({ namespace }));
+    return createQueueWorkerFromWorld(world, {
+      drains: options.drains,
+      tasks,
+      globalConcurrency: options.globalConcurrency,
+      queueConcurrency: options.queueConcurrency,
+      ...namespace,
+    });
+  }
+
   const { connection, ownsConnection } = resolveWorkerConnection(options.redis);
-  const state = createRedisQueueState(
-    connection.producer,
-    options.storage,
-    namespace,
-  );
-  const stores = normalizeStores(options.catalog, options.storage);
   const tasks = await loadQueueTasks(options.tasks);
-  const drain = composeDrains(
-    state,
-    options.storage,
-    ...(options.drains ?? []),
+  const world = validateWorld(
+    worldBullmq({
+      producer: connection.producer,
+      consumer: connection.worker,
+      storage: options.storage,
+      catalogFallbacks: normalizeStores(options.catalog, options.storage),
+    })({ namespace }),
   );
-
-  configureEnqueue({ redis: connection.producer, drain, ...namespace });
-
-  const queueNames = Array.from(
-    new Set(tasks.map((task) => task.queue)),
-  ).sort();
-  const queues = new Map(
-    queueNames.map((name) => [
-      name,
-      createQueue(name, connection.producer, namespace),
-    ]),
-  );
-
-  const catalog = await publishQueueCatalog(
-    connection.producer,
+  return createQueueWorkerFromWorld(world, {
+    drains: [options.storage, ...(options.drains ?? [])],
+    onClose: ownsConnection ? () => closeConnection(connection) : undefined,
     tasks,
-    stores,
-    namespace.namespace,
-  );
-
-  const trigger = async <I, O = unknown>(
-    target: string | TaskDefinition<I, O>,
-    input: I,
-    opts?: EnqueueOptions,
-  ) => {
-    if (typeof target !== 'string') return enqueue(target, input, opts);
-    const entry = await resolveTask(
-      connection.producer,
-      stores,
-      target,
-      namespace.namespace,
-    );
-    return enqueue(catalogEntryDefinition(entry), input, opts);
-  };
-  const schedules = createQueueSchedules({
-    redis: connection.producer,
-    storage: state,
-    resolveTask: (id) =>
-      resolveTask(connection.producer, stores, id, namespace.namespace),
-    trigger,
-    ...namespace,
-  });
-  const runs = createRunsApi(state.runs);
-  bindQueueRuntime({ trigger, schedules });
-  await syncDeclarativeSchedules(tasks, schedules as QueueScheduleController);
-
-  const workerTasks = [
-    ...tasks,
-    scheduleTickJob(schedules as QueueScheduleController, namespace),
-  ];
-
-  if (options.storage?.spans) attachSpanStore(options.storage.spans);
-
-  const workers = createWorker(workerTasks as TaskDefinition[], {
-    connection: connection.worker,
-    drain,
     globalConcurrency: options.globalConcurrency,
     queueConcurrency: options.queueConcurrency,
     ...namespace,
   });
+}
+
+export async function createQueueWorkerFromWorld(
+  world: OpenQueueWorld,
+  options: WorkerFromWorldOptions,
+): Promise<QueueWorkerRuntime> {
+  const namespace = resolveNamespace(options);
+  const { store, transport } = world;
+  await world.start?.();
+
+  const parts = composeWorldRuntime(world, options);
+  configureEnqueueTransport({ transport, drain: parts.drain });
+
+  const tasks = options.tasks;
+  const catalog = queueCatalogEntries(tasks);
+  await store.publish(catalog);
+
+  const { trigger, schedules, runs } = parts;
+  bindQueueRuntime({ trigger, schedules });
+  await syncDeclarativeSchedules(tasks, schedules);
+
+  const workerTasks = [
+    ...tasks,
+    scheduleTickJob(schedules, namespace),
+  ] as TaskDefinition[];
+
+  if (store.spans) attachSpanStore(store.spans);
+
+  const consumerOptions = {
+    drain: parts.drain,
+    globalConcurrency: options.globalConcurrency,
+    queueConcurrency: options.queueConcurrency,
+  };
+
+  let consumers: TransportConsumer[];
+  let workers: ReturnType<typeof createWorker> = [];
+  let queues: Map<string, ReturnType<typeof createQueue>> = new Map();
+  if (isBullmqTransport(transport)) {
+    const bullmqConsumers = createWorkerConsumers(
+      workerTasks,
+      transport,
+      consumerOptions,
+    );
+    consumers = bullmqConsumers;
+    workers = bullmqConsumers.map((consumer) => consumer.worker);
+    const queueNames = Array.from(
+      new Set(tasks.map((task) => task.queue)),
+    ).sort();
+    queues = new Map(queueNames.map((name) => [name, transport.queue(name)]));
+  } else {
+    consumers = createWorkerConsumers(workerTasks, transport, consumerOptions);
+  }
 
   const runtime: QueueWorkerRuntime = {
     tasks,
@@ -228,16 +253,12 @@ export async function createQueueWorker(
     trigger,
     schedules,
     runs,
-    spans: options.storage?.spans,
-    alerts: state.alerts,
+    spans: store.spans,
+    alerts: store.alerts,
     close: async () => {
-      await Promise.all(workers.map((worker) => worker.close()));
-      await Promise.all(
-        Array.from(queues.values()).map((queue) => queue.close()),
-      );
-      await closeSchedules(schedules);
-      await state.alerts.close?.();
-      if (ownsConnection) await closeConnection(connection);
+      await Promise.all(consumers.map((consumer) => consumer.close()));
+      await parts.close();
+      await options.onClose?.();
     },
   };
 
@@ -252,40 +273,6 @@ function normalizeStores(
   const stores = store ? (Array.isArray(store) ? store : [store]) : [];
   if (storage) stores.push(storage);
   return stores;
-}
-
-async function resolveTask(
-  redis: RedisClient,
-  stores: QueueCatalogStore[],
-  id: string,
-  namespace: string,
-): Promise<QueueCatalogEntry> {
-  try {
-    return await resolveQueueCatalogTask(redis, id, namespace);
-  } catch (err) {
-    for (const store of stores) {
-      const entry = await store.resolve(id);
-      if (entry) return entry;
-    }
-
-    throw err;
-  }
-}
-
-async function readCatalog(
-  redis: RedisClient,
-  stores: QueueCatalogStore[],
-  namespace: string,
-): Promise<QueueCatalogEntry[]> {
-  const entries = await readQueueCatalog(redis, namespace);
-  if (entries.length > 0) return entries;
-
-  for (const store of stores) {
-    const stored = await store.read();
-    if (stored.length > 0) return stored;
-  }
-
-  return [];
 }
 
 function resolveClientRedis(redis: RedisClient | { url: string }): {
@@ -310,10 +297,6 @@ function resolveWorkerConnection(redis: { url: string } | QueueConnection): {
 } {
   if ('producer' in redis) return { connection: redis, ownsConnection: false };
   return { connection: createConnection(redis.url), ownsConnection: true };
-}
-
-async function closeSchedules(schedules: QueueSchedulesApi): Promise<void> {
-  await (schedules as Partial<QueueScheduleController>).close?.();
 }
 
 async function syncDeclarativeSchedules(

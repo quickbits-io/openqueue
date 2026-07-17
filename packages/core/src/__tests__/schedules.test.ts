@@ -2,16 +2,8 @@ import { getTableConfig } from 'drizzle-orm/pg-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { task as defineTask } from '../task';
-import type {
-  QueueCatalogEntry,
-  QueueRunListResult,
-  QueueSchedule,
-  QueueScheduleCreateInput,
-  QueueScheduleListOptions,
-  QueueScheduleUpdateInput,
-  QueueStorage,
-  TaskDefinition,
-} from '../types';
+import type { TaskDefinition } from '../types';
+import { catalogEntry, memoryStorage } from './support/memory-storage';
 
 const bullmq = vi.hoisted(() => {
   class QueueMock {
@@ -66,159 +58,6 @@ vi.mock('bullmq', () => ({
   Queue: bullmq.QueueMock,
 }));
 
-function catalogEntry(id: string): QueueCatalogEntry {
-  return {
-    id,
-    name: id,
-    queue: 'notifications',
-    attempts: 1,
-    backoff: { type: 'fixed', delay: 1 },
-    concurrency: 1,
-    tags: [],
-    updatedAt: new Date().toISOString(),
-    version: new Date().toISOString(),
-  };
-}
-
-function memoryStorage(): QueueStorage {
-  const catalog = new Map<string, QueueCatalogEntry>();
-  const schedules = new Map<string, QueueSchedule>();
-
-  return {
-    publish: async (entries) => {
-      catalog.clear();
-      for (const entry of entries) catalog.set(entry.id, entry);
-    },
-    resolve: async (id) => catalog.get(id),
-    read: async () => Array.from(catalog.values()),
-    runs: {
-      list: async (): Promise<QueueRunListResult> => ({
-        data: [],
-        hasMore: false,
-      }),
-    },
-    alerts: {
-      getContactPoints: async () => [],
-      getContactPoint: async () => undefined,
-      createContactPoint: async (input) => ({
-        ...input,
-        id: crypto.randomUUID(),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      }),
-      updateContactPoint: async () => undefined,
-      deleteContactPoint: async () => false,
-      getRules: async () => [],
-      getRule: async () => undefined,
-      createRule: async (input) => ({
-        ...input,
-        id: crypto.randomUUID(),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      }),
-      updateRule: async () => undefined,
-      deleteRule: async () => false,
-    },
-    handle: async () => undefined,
-    schedules: {
-      create: async (input: QueueScheduleCreateInput) => {
-        const existing = Array.from(schedules.values()).find(
-          (item) => item.deduplicationKey === input.deduplicationKey,
-        );
-        const schedule: QueueSchedule = {
-          id: existing?.id ?? input.id,
-          type: input.type ?? 'IMPERATIVE',
-          task: input.task,
-          input: input.input,
-          active: true,
-          cron: input.cron,
-          timezone: input.timezone,
-          externalId: input.externalId,
-          deduplicationKey: input.deduplicationKey,
-          meta: input.meta ?? {},
-          nextRun: input.nextRunAt,
-          createdAt: existing?.createdAt ?? new Date(),
-          updatedAt: new Date(),
-        };
-        schedules.set(schedule.id, schedule);
-        return schedule;
-      },
-      retrieve: async (id: string) => schedules.get(id),
-      list: async (options?: QueueScheduleListOptions) =>
-        Array.from(schedules.values()).filter((schedule) => {
-          if (options?.task && schedule.task !== options.task) return false;
-          if (
-            options?.externalId &&
-            schedule.externalId !== options.externalId
-          ) {
-            return false;
-          }
-          if (options?.meta) {
-            for (const [key, value] of Object.entries(options.meta)) {
-              if (schedule.meta[key] !== value) return false;
-            }
-          }
-          if (
-            options?.active !== undefined &&
-            schedule.active !== options.active
-          ) {
-            return false;
-          }
-          return true;
-        }),
-      update: async (id: string, input: QueueScheduleUpdateInput) => {
-        const current = schedules.get(id);
-        if (!current) return undefined;
-        const next: QueueSchedule = {
-          ...current,
-          type: input.type ?? current.type,
-          task: input.task ?? current.task,
-          input: input.input ?? current.input,
-          cron: input.cron ?? current.cron,
-          timezone: input.timezone ?? current.timezone,
-          externalId:
-            input.externalId === undefined
-              ? current.externalId
-              : (input.externalId ?? undefined),
-          deduplicationKey: input.deduplicationKey ?? current.deduplicationKey,
-          meta: input.meta ?? current.meta,
-          nextRun: input.nextRunAt ?? current.nextRun,
-          updatedAt: new Date(),
-        };
-        schedules.set(id, next);
-        return next;
-      },
-      activate: async (id: string) => {
-        const current = schedules.get(id);
-        if (!current) return undefined;
-        const next = { ...current, active: true, updatedAt: new Date() };
-        schedules.set(id, next);
-        return next;
-      },
-      deactivate: async (id: string) => {
-        const current = schedules.get(id);
-        if (!current) return undefined;
-        const next = { ...current, active: false, updatedAt: new Date() };
-        schedules.set(id, next);
-        return next;
-      },
-      delete: async (id: string) => schedules.delete(id),
-      complete: async (id: string, lastRunAt: Date, nextRunAt: Date) => {
-        const current = schedules.get(id);
-        if (!current) return undefined;
-        const next = {
-          ...current,
-          lastRun: lastRunAt,
-          nextRun: nextRunAt,
-          updatedAt: new Date(),
-        };
-        schedules.set(id, next);
-        return next;
-      },
-    },
-  };
-}
-
 describe('queue schedules', () => {
   beforeEach(() => {
     bullmq.QueueMock.instances.length = 0;
@@ -231,9 +70,8 @@ describe('queue schedules', () => {
   });
 
   it('creates a dynamic schedule and enqueues the next tick', async () => {
-    const { createQueueSchedules, scheduleTickJobName } = await import(
-      '../schedules.js'
-    );
+    const { scheduleTickJobName } = await import('../schedules.js');
+    const { createQueueSchedules } = await import('../schedules-bullmq.js');
     const storage = memoryStorage();
     await storage.publish([catalogEntry('send-personal-reminder')]);
 
@@ -268,7 +106,7 @@ describe('queue schedules', () => {
   });
 
   it('lists schedules with generic filters', async () => {
-    const { createQueueSchedules } = await import('../schedules.js');
+    const { createQueueSchedules } = await import('../schedules-bullmq.js');
     const storage = memoryStorage();
     await storage.publish([
       catalogEntry('send-personal-reminder'),
@@ -310,7 +148,7 @@ describe('queue schedules', () => {
   });
 
   it('fires scheduled payloads and registers the next occurrence', async () => {
-    const { createQueueSchedules } = await import('../schedules.js');
+    const { createQueueSchedules } = await import('../schedules-bullmq.js');
     const storage = memoryStorage();
     await storage.publish([catalogEntry('send-personal-reminder')]);
     const triggered: unknown[] = [];
@@ -368,7 +206,7 @@ describe('queue schedules', () => {
   });
 
   it('fires declarative schedules with schema-less default input', async () => {
-    const { createQueueSchedules } = await import('../schedules.js');
+    const { createQueueSchedules } = await import('../schedules-bullmq.js');
     const storage = memoryStorage();
     const task = defineTask({
       id: 'sync-rates',
@@ -415,7 +253,7 @@ describe('queue schedules', () => {
   });
 
   it('fires declarative schedules with schema-derived default input', async () => {
-    const { createQueueSchedules } = await import('../schedules.js');
+    const { createQueueSchedules } = await import('../schedules-bullmq.js');
     const storage = memoryStorage();
     const task = defineTask({
       id: 'send-message',
@@ -450,7 +288,7 @@ describe('queue schedules', () => {
   });
 
   it('rejects declarative schedules when schema defaults cannot produce input', async () => {
-    const { createQueueSchedules } = await import('../schedules.js');
+    const { createQueueSchedules } = await import('../schedules-bullmq.js');
     const storage = memoryStorage();
     const task = defineTask({
       id: 'send-message',

@@ -1,3 +1,33 @@
+export type {
+  ApiKeyOptions,
+  AuthChallenge,
+  AuthDenialOptions,
+  AuthResult,
+  AuthStrategy,
+  HttpBasicOptions,
+  JwtClaimMatchers,
+  JwtHmacOptions,
+  OidcOptions,
+  Principal,
+  VerifyResult,
+} from './auth';
+export {
+  apiKey,
+  authenticate,
+  extractBearerToken,
+  ForbiddenError,
+  httpBasic,
+  isLoopbackRequest,
+  jwtHmac,
+  localDev,
+  none,
+  oidc,
+  UnauthenticatedError,
+  verifyApiKey,
+  verifyHttpBasic,
+  verifyJwtHmac,
+  verifyOidc,
+} from './auth';
 export {
   catalogEntryDefinition,
   memoryQueueCatalogStore,
@@ -61,6 +91,7 @@ export {
   traceCarrierKey,
 } from './otel-hooks';
 export { createQueue, defaultJobOptions, queue } from './queue';
+export { isTerminalRunStatus } from './runs';
 export type {
   CreateQueueWorkerOptions,
   QueueClient,
@@ -71,7 +102,6 @@ export { createQueueClient, createQueueWorker } from './runtime';
 export type { QueueScheduleController } from './schedules';
 export {
   assertCron,
-  createQueueSchedules,
   nextScheduledTimestamp,
   nextScheduledTimestamps,
   scheduleQueueName,
@@ -80,6 +110,7 @@ export {
   scheduleTickJob,
   scheduleTickJobName,
 } from './schedules';
+export { createQueueSchedules } from './schedules-bullmq';
 export {
   attachSpanStore,
   withRunContext,
@@ -104,6 +135,7 @@ export type {
   AlertStore,
   AlertTrigger,
   BackoffOptions,
+  CancelRunResult,
   CreateQueueScheduleOptions,
   EnqueueMeta,
   EnqueueOptions,
@@ -132,6 +164,7 @@ export type {
   QueueSpanStore,
   QueueState,
   QueueStorage,
+  RunPrincipal,
   RunSpanKind,
   RunStatus,
   ScheduledTaskPayload,
@@ -147,3 +180,29 @@ export type {
 } from './types';
 export type { CreateWorkerOptions, QueueConcurrency } from './worker';
 export { createWorker } from './worker';
+export type {
+  ActiveTransportJob,
+  ConsumeOptions,
+  OpenQueueWorld,
+  QueueTransport,
+  TransportCapabilities,
+  TransportCapability,
+  TransportConsumer,
+  TransportFlowNode,
+  TransportJobHandle,
+  TransportJobSpec,
+  TransportRetention,
+  WorldContext,
+  WorldFactory,
+  WorldMigrationStatus,
+  WorldMigrationStep,
+  WorldMigrations,
+} from './world';
+export {
+  UnsupportedCapabilityError,
+  validateWorld,
+  WORLD_SPEC_VERSION,
+} from './world';
+export type { WorldBullmqOptions } from './world-bullmq';
+export { worldBullmq } from './world-bullmq';
+export { worldLocal } from './world-local';
