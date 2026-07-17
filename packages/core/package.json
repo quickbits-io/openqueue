@@ -62,7 +62,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.11.1"
   },
   "publishConfig": {
     "access": "public"
@@ -80,7 +80,7 @@
   "dependencies": {
     "cron-parser": "^4.9.0",
     "drizzle-orm": "^0.45.1",
-    "jose": "^5.9.6",
+    "jose": "^6.2.3",
     "zod": "^4.1.13"
   },
   "peerDependencies": {

@@ -95,5 +95,5 @@ INSERT INTO "openqueue".schedules   SELECT * FROM old_schema.schedules;
 
 ## Runtime
 
-Node 18+ and Bun. Ships ESM + `.d.ts`. Depends only on `@openqueue/core`,
+Node 20.11+ and Bun. Ships ESM + `.d.ts`. Depends only on `@openqueue/core`,
 `drizzle-orm`, and `postgres` — no ioredis/bullmq.

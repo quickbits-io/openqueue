@@ -44,7 +44,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.11.1"
   },
   "publishConfig": {
     "access": "public"

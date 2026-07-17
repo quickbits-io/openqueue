@@ -59,9 +59,6 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Verify Node package imports
-        run: node --input-type=module -e "await Promise.all([import('./packages/core/dist/index.js'), import('./packages/openqueue/dist/index.js')])"
-
       # Phantom-dependency gate: every @openqueue/core dist entry must ship
       # without ioredis/bullmq after the world-bullmq extraction — the load-bearing
       # protection against a stray import that hoisting would let typecheck.
@@ -86,6 +83,49 @@ jobs:
 
       - name: Test
         run: bun run test
+
+  node-imports:
+    name: Node import smoke (${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.11.1 is the engines floor (h3 v2 minimum); 22 is the recommended
+        # line. Both must import every Node-capable package's built dist.
+        node-version: ['20.11.1', '22']
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Bun is the toolchain (build/tsup); real Node only runs the import smoke.
+      - name: Build
+        run: bunx turbo run build
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # Every Node-capable package's built dist entry must import cleanly on the
+      # supported Node versions — the guarantee behind `engines.node >=20.11.1`.
+      # Bun stays the test runner everywhere else.
+      - name: Verify Node package imports
+        run: |
+          node --input-type=module -e "await Promise.all([
+            import('./packages/core/dist/index.js'),
+            import('./packages/openqueue/dist/index.js'),
+            import('./packages/client/dist/index.js'),
+            import('./packages/world-postgres/dist/index.js'),
+            import('./packages/world-bullmq/dist/index.js'),
+            import('./packages/workbench/dist/index.js'),
+          ])"
 
   e2e:
     name: E2E (control API over real TCP)

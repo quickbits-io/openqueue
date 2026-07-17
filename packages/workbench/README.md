@@ -31,7 +31,7 @@ export const { GET, POST, PUT, PATCH, DELETE } = workbench({
 });
 ```
 
-Runs on Node 18+ or Bun. React is bundled into the prebuilt UI — consumers of
+Runs on Node 20.11+ or Bun. React is bundled into the prebuilt UI — consumers of
 the adapters don't need to install it.
 
 ## Documentation

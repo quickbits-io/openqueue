@@ -3,7 +3,7 @@
 Fetch-only HTTP client for a deployed [OpenQueue](https://github.com/quickbits-io/openqueue)
 worker. Trigger tasks, read runs, and manage schedules over the versioned
 `/openqueue/v1` control API — with **zero** Redis or database connections. Safe
-for Node 18+, Bun, and edge runtimes.
+for Node 20.11+, Bun, and edge runtimes.
 
 ```ts
 import { createClient } from '@openqueue/client';
