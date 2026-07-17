@@ -374,6 +374,25 @@ describe('control routes — runs', () => {
     expect(r4.status).toBe(404);
     expect(r4.body).toMatchObject({ error: { code: 'run_not_found' } });
   });
+
+  it('maps an UnsupportedCapabilityError from cancel to 501 unsupported_capability', async () => {
+    const options = makeOptions({
+      runs: runsApi({
+        retrieve: async () => queueRun({ status: 'executing' }),
+        cancel: async () => {
+          throw new UnsupportedCapabilityError('remove', 'stub-transport');
+        },
+      }),
+    });
+    const result = await handlerFor(
+      options,
+      'post',
+      '/runs/:id/cancel',
+    )({ params: { id: 'r1' }, query: {} });
+    expect(result.status).toBe(501);
+    const parsed = errorResponseSchema.parse(result.body);
+    expect(parsed.error.code).toBe('unsupported_capability');
+  });
 });
 
 describe('control routes — schedules', () => {

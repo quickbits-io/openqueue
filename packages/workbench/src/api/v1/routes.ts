@@ -4,6 +4,7 @@ import {
   updateScheduleRequestSchema,
 } from '@openqueue/client/wire';
 import type {
+  CancelRunResult,
   EnqueueMeta,
   EnqueueOptions,
   EnqueueResult,
@@ -147,7 +148,15 @@ export function buildControlRouteTable(options: ControlApiOptions): RouteDef[] {
           return controlError('run_not_found', `Run "${id}" not found`);
         }
         if (!canAccess(input.principal, existing.meta)) return forbidden();
-        const result = await runtime.runs.cancel(id);
+        let result: CancelRunResult;
+        try {
+          result = await runtime.runs.cancel(id);
+        } catch (err) {
+          if (err instanceof UnsupportedCapabilityError) {
+            return controlError('unsupported_capability', err.message);
+          }
+          throw err;
+        }
         if (result.outcome === 'not_found') {
           return controlError('run_not_found', `Run "${id}" not found`);
         }
