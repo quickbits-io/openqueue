@@ -38,7 +38,6 @@ export const resizeImage = task({
 | `attempts` | `3` | Total tries before the job is marked failed. |
 | `backoff` | exponential, 1s | `{ type: 'exponential' \| 'fixed', delay }` — or a number for fixed delay. |
 | `cron` | — | Cron expression for a static schedule. See [Schedules](/docs/schedules). |
-| `ttl` | — | Max runtime in milliseconds before the run is timed out. |
 | `tags` | `[]` | Free-form labels, filterable in Workbench. |
 | `description` | — | Shown in the Workbench task catalog. |
 
