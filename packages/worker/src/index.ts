@@ -13,12 +13,14 @@ import {
   type QueueWorkerRuntime,
   type TaskDefinition,
   validateTaskDefinitions,
+  type WorldFactory,
 } from '@openqueue/core';
 import {
+  resolveControlAuth,
   WorkbenchCore,
   type WorkbenchJobDefinition,
 } from '@openqueue/workbench';
-import { buildWorkbenchApp } from '@openqueue/workbench/hono';
+import { buildControlApp, buildWorkbenchApp } from '@openqueue/workbench/h3';
 import { createHealthServer } from './health';
 import { createQueueMetrics } from './metrics';
 
@@ -33,6 +35,8 @@ export interface StartWorkerAppOptions {
 
 interface WorkerApp {
   runtime: QueueWorkerRuntime;
+  /** TCP port the app is listening on (useful with `port: 0`). */
+  port: number;
   close(): Promise<void>;
 }
 
@@ -40,20 +44,31 @@ export async function startWorkerApp(
   config: OpenQueueConfig,
   options: StartWorkerAppOptions = {},
 ): Promise<WorkerApp> {
-  validateConfig(config);
+  const backend = validateConfig(config);
   const cwd = options.cwd ?? configDirs.get(config) ?? process.cwd();
   const tasks = options.tasks ?? (await resolveTasks(config, cwd));
   const drains = [consoleDrain(), ...(config.drains ?? [])];
-  const runtime = await createQueueWorker({
-    namespace: config.namespace,
-    bullPrefix: config.redis.bullPrefix,
-    redis: { url: config.redis.url },
-    tasks,
-    storage: config.storage?.adapter,
-    drains,
-    globalConcurrency: config.concurrency?.global,
-    queueConcurrency: config.concurrency?.queues,
-  });
+  const runtime = await createQueueWorker(
+    backend.world
+      ? {
+          namespace: config.namespace,
+          world: backend.world,
+          tasks,
+          drains,
+          globalConcurrency: config.concurrency?.global,
+          queueConcurrency: config.concurrency?.queues,
+        }
+      : {
+          namespace: config.namespace,
+          bullPrefix: backend.redis.bullPrefix,
+          redis: { url: backend.redis.url },
+          tasks,
+          storage: config.storage?.adapter,
+          drains,
+          globalConcurrency: config.concurrency?.global,
+          queueConcurrency: config.concurrency?.queues,
+        },
+  );
   const queueNames = Array.from(runtime.queues.keys()).sort();
   const state = { ready: true };
   const health = createHealthServer(state, {
@@ -66,18 +81,48 @@ export async function startWorkerApp(
           ),
   });
 
+  const controlAuth = resolveControlAuth(
+    config.api && { token: config.api.token, strategies: config.api.auth },
+    process.env.NODE_ENV,
+  );
+  health.mount(
+    '/openqueue/v1',
+    buildControlApp({
+      runtime: {
+        trigger: runtime.trigger,
+        runs: runtime.runs,
+        schedules: runtime.schedules,
+        catalog: {
+          read: async () => runtime.catalog,
+          resolve: async (id) =>
+            runtime.catalog.find((entry) => entry.id === id),
+        },
+      },
+      auth: { token: config.api?.token, strategies: config.api?.auth },
+      info: { namespace: config.namespace },
+    }),
+  );
+  console.log(
+    `[openqueue] control API mounted at /openqueue/v1 (auth: ${controlAuth.mode})`,
+  );
+
   if (config.workbench?.enabled) {
     const basePath = config.workbench.basePath ?? '/workbench';
-    health.route(
+    health.mount(
       basePath,
       buildWorkbenchApp(createWorkbenchForRuntime(runtime, config)),
     );
+    if (runtime.queues.size === 0) {
+      console.log(
+        '[openqueue] workbench: no BullMQ queues on this world — queue/run pages will be empty; use /openqueue/v1 for run history',
+      );
+    }
   }
 
   const port = options.port ?? Number(process.env.PORT ?? 8090);
   const server = Bun.serve({
     port,
-    fetch: health.fetch,
+    fetch: (req) => health.fetch(req),
     idleTimeout: 30,
   });
 
@@ -108,21 +153,44 @@ export async function startWorkerApp(
     process.once('SIGINT', drain);
   }
 
-  return { runtime, close };
+  return { runtime, port: server.port ?? port, close };
 }
 
-function validateConfig(config: OpenQueueConfig): void {
+/** The delivery backend a validated config resolves to: a world XOR a Redis. */
+type ValidatedBackend =
+  | { world: WorldFactory; redis?: undefined }
+  | { redis: { url: string; bullPrefix?: string }; world?: undefined };
+
+function validateConfig(config: OpenQueueConfig): ValidatedBackend {
   if (!config.namespace?.trim()) {
     throw new Error('OpenQueue config requires namespace');
   }
-  if (!config.redis?.url) {
-    throw new Error('OpenQueue config requires redis.url');
+  if (config.world && config.redis?.url) {
+    throw new Error('OpenQueue config accepts either redis or world, not both');
   }
   const hasDirs = Array.isArray(config.dirs) && config.dirs.length > 0;
   const hasTasks = Boolean(config.tasks);
   if (!hasDirs && !hasTasks) {
     throw new Error('OpenQueue config requires dirs or tasks');
   }
+  const basePath = config.workbench?.basePath;
+  if (basePath === '/openqueue' || basePath?.startsWith('/openqueue/')) {
+    throw new Error(
+      'OpenQueue config workbench.basePath cannot use the reserved /openqueue prefix',
+    );
+  }
+  if (config.world) {
+    if (config.storage) {
+      throw new Error(
+        'OpenQueue config: the world owns durable state; configure it inside the world factory',
+      );
+    }
+    return { world: config.world };
+  }
+  if (config.redis?.url) {
+    return { redis: config.redis };
+  }
+  throw new Error('OpenQueue config requires redis.url or world');
 }
 
 export function createWorkbenchForRuntime(
@@ -133,7 +201,7 @@ export function createWorkbenchForRuntime(
   return new WorkbenchCore({
     queues: Array.from(runtime.queues.values()),
     title: workbench.title ?? 'OpenQueue',
-    prefix: config.redis.bullPrefix ?? 'bull',
+    prefix: config.redis?.bullPrefix ?? 'bull',
     readonly: workbench.readonly ?? false,
     auth: workbench.auth,
     tagFields: workbench.tagFields ?? [],
@@ -143,7 +211,11 @@ export function createWorkbenchForRuntime(
       spans: runtime.spans,
     },
     alerts: {
-      persistence: config.storage?.adapter ? 'postgres' : 'redis',
+      persistence: config.storage?.adapter
+        ? 'postgres'
+        : config.world
+          ? 'custom'
+          : 'redis',
       store: runtime.alerts,
       delivery: true,
     },

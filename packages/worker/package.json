@@ -53,7 +53,7 @@
   "dependencies": {
     "@openqueue/core": "workspace:*",
     "@openqueue/workbench": "workspace:*",
-    "hono": "^4.11.9"
+    "h3": "2.0.1-rc.25"
   },
   "devDependencies": {
     "@types/bun": "^1.2.18",
