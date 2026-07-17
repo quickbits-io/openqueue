@@ -43,25 +43,72 @@ export const { GET, POST, PUT, PATCH, DELETE } = workbench({
 
 Leave `basePath` unset when the route lives at the app root.
 
-## Mounted in Hono
+## Mounted in h3
 
 ```ts
-import { createWorkbenchApp } from '@openqueue/workbench/hono';
+import { createWorkbenchApp } from '@openqueue/workbench/h3';
 
 const dashboard = await createWorkbenchApp({
   redis: { url: process.env.REDIS_URL! },
 });
 
-app.route('/workbench', dashboard);
+app.mount('/workbench', dashboard);
 ```
 
 When `redis` is provided without an explicit queue list, Workbench discovers
 queues automatically from the published queue catalog.
 
+## Mounted in other hosts
+
+The dashboard is a plain fetch handler, so it mounts into any fetch-native host —
+no shipped adapter needed. `createFetchHandler` returns a `.fetch(request)`;
+`createWorkbenchApp` returns an `H3` app you can hand to h3's Node adapter.
+
+```ts
+// Hono — mount the fetch handler under a prefix
+import { createFetchHandler } from '@openqueue/workbench';
+
+honoApp.mount(
+  '/admin/jobs',
+  createFetchHandler({ redis: { url: process.env.REDIS_URL! }, basePath: '/admin/jobs' })
+    .fetch,
+);
+```
+
+```ts
+// Express — h3's Node adapter bridges the app onto a middleware
+import { toNodeHandler } from 'h3';
+import { createWorkbenchApp } from '@openqueue/workbench/h3';
+
+const app = await createWorkbenchApp({ redis: { url: process.env.REDIS_URL! } });
+expressApp.use('/admin/jobs', toNodeHandler(app));
+```
+
 ## Read-only mode
 
 Set `readonly: true` to expose the dashboard to a wider audience without
 retry/enqueue/pause actions — useful for support teams and stakeholders.
+
+## On non-BullMQ worlds
+
+Workbench can mount on a worker backed by a non-BullMQ world (a `world` in the
+config instead of `redis`). Much of it still works; the parts that read BullMQ
+directly degrade gracefully rather than erroring. This matrix is the code truth:
+
+- **Fully works:** the shell, config, and auth; the test console (enqueues
+  through the registry → `runtime.trigger`); dynamic schedule CRUD; alert
+  contact-point and rule CRUD (persisted in the world's own store).
+- **Inert:** alert _firing_ — it evaluates BullMQ queue metrics, which a
+  non-BullMQ world doesn't expose, so rules never trigger.
+- **Empty:** the Runs page reads BullMQ, not the core run store, so run history
+  for these worlds lives on the control API (`/openqueue/v1`) and the client,
+  not the dashboard. Overview, counts, metrics, errors, activity, search, and
+  tags render as zeros; queue pages, job detail/logs/spans, the
+  retry/remove/promote/clean/bulk/pause actions, repeatable schedulers, and the
+  Prometheus endpoint all read raw BullMQ and stay empty.
+
+When the worker mounts Workbench on a world with no BullMQ queues it logs a
+one-line reminder pointing at `/openqueue/v1` for run history.
 
 ## Prior art
 

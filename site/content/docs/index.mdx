@@ -46,7 +46,7 @@ await sendWelcome.trigger({ email: 'alex@example.com' });
 | `@openqueue/sdk` | The main entry — `task()`, `defineConfig()`, `enqueueFlow()`, errors, adapters. |
 | `@openqueue/core` | The underlying runtime (re-exported by the main package). |
 | `@openqueue/worker` | The worker app — loads your config, runs tasks, serves Workbench. |
-| `@openqueue/workbench` | The dashboard — standalone or mountable into Hono / Next.js. |
+| `@openqueue/workbench` | The dashboard — standalone or mountable into any fetch-native host (h3, Hono, Elysia) / Next.js. |
 | `@openqueue/cli` | The `openqueue` CLI — `init`, `dev`, `build`, `start`. |
 
 ## How it fits together

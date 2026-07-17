@@ -74,9 +74,11 @@ Per-package work: `cd packages/<pkg> && bun run build|test|typecheck`.
 | --- | --- | --- | --- |
 | `packages/core` | `@openqueue/core` | Node 18+ / Bun | Engine: tasks, queues, schedules, flows, persistence (Drizzle), OTel hooks. |
 | `packages/openqueue` | `@openqueue/sdk` | Node 18+ / Bun | Flagship package; re-exports core. The import users write. |
+| `packages/client` | `@openqueue/client` | Node 18+ / Bun / edge | Fetch-only HTTP client for a deployed worker; zero Redis/DB deps (only `zod`). |
+| `packages/world-postgres` | `@openqueue/world-postgres` | Node 18+ / Bun | Self-migrating Postgres world: `SELECT … FOR UPDATE SKIP LOCKED` transport + Drizzle store, zero Redis. |
 | `packages/worker` | `@openqueue/worker` | **Bun only** | Worker app; uses `Bun.serve`, loads config, serves Workbench. |
 | `packages/cli` | `@openqueue/cli` | **Bun only** | `openqueue` binary; uses `Bun.build`/`Bun.spawn`/`Bun.Glob`. |
-| `packages/workbench` | `@openqueue/workbench` | Node 18+ / Bun | Dashboard (React, built by Vite) + Hono/Next adapters (built by tsup). |
+| `packages/workbench` | `@openqueue/workbench` | Node 20.11+ / Bun | Dashboard (React, built by Vite) + h3/Next adapters (built by tsup). |
 | `site` | — | — | Docs/marketing (Next.js + Fumadocs). Private. |
 | `examples/basic` | — | Bun | A runnable example worker. Private. |
 
@@ -95,7 +97,7 @@ Use the published specifiers, not deep relative paths across packages:
 ```ts
 import { task, defineConfig } from '@openqueue/sdk';
 import { createWorker } from '@openqueue/core';
-import { buildWorkbenchApp } from '@openqueue/workbench/hono';
+import { buildWorkbenchApp } from '@openqueue/workbench/h3';
 ```
 
 ## Code Style
