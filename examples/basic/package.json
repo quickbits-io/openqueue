@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "test -f .env || cp .env.example .env && bun run worker:dev",
     "worker:dev": "openqueue dev --env-file .env",
     "worker:build": "openqueue build",
     "worker:start": "openqueue start --env-file .env"
