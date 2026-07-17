@@ -1,0 +1,71 @@
+{
+  "name": "@openqueue/world-postgres",
+  "version": "0.1.4",
+  "description": "Self-migrating Postgres world for OpenQueue — a SKIP LOCKED delivery transport plus Drizzle-backed durable state, with zero Redis.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/world-postgres#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quickbits-io/openqueue.git",
+    "directory": "packages/world-postgres"
+  },
+  "bugs": {
+    "url": "https://github.com/quickbits-io/openqueue/issues"
+  },
+  "keywords": [
+    "openqueue",
+    "queue",
+    "jobs",
+    "background-jobs",
+    "postgres",
+    "drizzle",
+    "skip-locked",
+    "bun",
+    "typescript"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf .turbo node_modules dist",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:transport": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "migrations:generate": "bun scripts/generate-migrations.ts",
+    "migrations:check": "bun scripts/generate-migrations.ts --check"
+  },
+  "dependencies": {
+    "@openqueue/core": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.10",
+    "drizzle-kit": "^0.31.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
