@@ -9,5 +9,5 @@ export default defineConfig((options) => ({
   sourcemap: true,
   clean: !options.watch,
   treeshake: true,
-  target: 'node18',
+  target: 'node20',
 }));

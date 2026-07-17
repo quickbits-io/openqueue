@@ -16,5 +16,5 @@ export default defineConfig((options) => ({
   // boot against these files while `turbo run dev` is coming up.
   clean: !options.watch,
   treeshake: true,
-  target: 'node18',
+  target: 'node20',
 }));
