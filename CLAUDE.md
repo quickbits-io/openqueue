@@ -63,7 +63,6 @@ bun run typecheck  # tsc --noEmit across packages
 bun run test       # vitest
 bun run lint       # biome check
 bun run format     # biome format --write
-bun run changeset  # describe a change for release (see Releases below)
 ```
 
 Per-package work: `cd packages/<pkg> && bun run build|test|typecheck`.

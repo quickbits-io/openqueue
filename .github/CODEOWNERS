@@ -6,4 +6,3 @@
 
 # Extra scrutiny for anything that runs in CI or can publish to npm.
 /.github/      @krzkz94
-/.changeset/   @krzkz94

@@ -74,6 +74,7 @@ them. If you did wire a runtime by hand, here are the replacements:
 | `createQueueSchedules` | Schedules come off the runtime: `runtime.schedules` / `client.schedules`. |
 | `publishQueueCatalog`, `readQueueCatalog`, `resolveQueueCatalogTask`, `queueCatalogKey`, `queueCatalogPublishedAtKey` | The Redis catalog format is now private to `world-bullmq`. Read the catalog via `client.catalog` / `runtime.catalog`. |
 | `bullPrefix`, `DEFAULT_BULL_PREFIX`, `redisKey` | BullMQ key details live in the world: `worldBullmq({ prefix })` (absorbs the old `bullPrefix`). |
+| `QueueDefinitionInput` | Removed (unreferenced helper type; `QueueDefinition` remains). |
 
 `createQueueClient` and `createQueueWorker` now take a `world` (a `WorldFactory`)
 instead of a `redis` connection, and are **async** because a world factory may be
