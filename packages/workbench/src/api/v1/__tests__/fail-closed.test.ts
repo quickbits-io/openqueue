@@ -71,6 +71,18 @@ describe('control API fail-closed before 404', () => {
     await expect(res.json()).resolves.toEqual({ ok: true });
   });
 
+  it('404s an authenticated unknown path with the wire envelope (standalone)', async () => {
+    // The mounted counterpart is covered below; this pins the same `/**`
+    // catch-all envelope for a bare (unmounted) control app.
+    const res = await buildControlApp(options()).request('/does-not-exist', {
+      headers: { Authorization: 'Bearer secret' },
+    });
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toMatchObject({
+      error: { code: 'not_found' },
+    });
+  });
+
   it('401s an unauthenticated unknown path (mounted)', async () => {
     const host = new H3().mount('/openqueue/v1', buildControlApp(options()));
     const res = await host.request('/openqueue/v1/does-not-exist');

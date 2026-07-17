@@ -276,6 +276,30 @@ describe('createClient runs', () => {
     });
   });
 
+  it('parses a 409 not_cancelable response whose reason is not "executing" (widened wire reason)', async () => {
+    // The frozen wire schema widened `reason` from the `'executing'` literal to
+    // a plain string, so a server sending a different reason no longer fails
+    // schema validation on an older client. The client resolves (does not
+    // throw) and normalizes to the `CancelRunResult` literal.
+    const { fetch } = stubFetch(() =>
+      jsonResponse(
+        {
+          outcome: 'not_cancelable',
+          run: wireRunPayload({ status: 'executing' }),
+          reason: 'row_locked',
+        },
+        409,
+      ),
+    );
+    const client = createClient({ host: 'http://x', fetch });
+
+    const result = await client.runs.cancel('r1');
+    expect(result.outcome).toBe('not_cancelable');
+    if (result.outcome === 'not_cancelable') {
+      expect(result.reason).toBe('executing');
+    }
+  });
+
   it('maps a 404 cancel response to not_found', async () => {
     const { fetch } = stubFetch(() =>
       jsonResponse({ error: { code: 'run_not_found', message: 'x' } }, 404),

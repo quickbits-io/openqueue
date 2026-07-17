@@ -13,6 +13,7 @@ import type {
   QueueSchedulesApi,
   UpdateQueueScheduleOptions,
 } from '@openqueue/core';
+import { UnsupportedCapabilityError } from '@openqueue/core/world';
 import { describe, expect, it } from 'vitest';
 import type { HttpMethod } from '../../handlers';
 import { buildControlApp } from '../app';
@@ -218,6 +219,26 @@ describe('control routes — jobs', () => {
     expect(result.status).toBe(201);
     expect(captured).toMatchObject({ delay: 5000, priority: 7 });
   });
+
+  it('maps an UnsupportedCapabilityError from trigger to 501 unsupported_capability', async () => {
+    const options = makeOptions({
+      trigger: async () => {
+        throw new UnsupportedCapabilityError('delay', 'stub-transport');
+      },
+    });
+    const result = await handlerFor(
+      options,
+      'post',
+      '/jobs',
+    )({
+      params: {},
+      query: {},
+      body: { task: 'send-email', input: { to: 'x' } },
+    });
+    expect(result.status).toBe(501);
+    const parsed = errorResponseSchema.parse(result.body);
+    expect(parsed.error.code).toBe('unsupported_capability');
+  });
 });
 
 describe('control routes — runs', () => {
@@ -421,6 +442,25 @@ describe('control routes — schedules', () => {
     expect(result.body).toMatchObject({
       error: { code: 'schedule_not_found' },
     });
+  });
+
+  it('maps an UnsupportedCapabilityError from runNow to 501 unsupported_capability', async () => {
+    const options = makeOptions({
+      schedules: schedulesApi({
+        retrieve: async () => queueSchedule(),
+        runNow: async () => {
+          throw new UnsupportedCapabilityError('delay', 'stub-transport');
+        },
+      }),
+    });
+    const result = await handlerFor(
+      options,
+      'post',
+      '/schedules/:id/run',
+    )({ params: { id: 's1' }, query: {} });
+    expect(result.status).toBe(501);
+    const parsed = errorResponseSchema.parse(result.body);
+    expect(parsed.error.code).toBe('unsupported_capability');
   });
 });
 
