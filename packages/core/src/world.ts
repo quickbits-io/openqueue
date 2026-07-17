@@ -1,7 +1,11 @@
-import type { ResolvedNamespace } from './namespace';
 import type { QueueTransport } from './transport/types';
 import type { QueueStorage } from './types';
 
+export {
+  filterRuns,
+  filterSchedules,
+  runFromSnapshot,
+} from './store/filter';
 export type {
   ActiveTransportJob,
   ConsumeOptions,
@@ -27,7 +31,7 @@ export { UnsupportedCapabilityError } from './transport/types';
 export const WORLD_SPEC_VERSION = 1;
 
 export interface WorldContext {
-  namespace: ResolvedNamespace;
+  namespace: string;
 }
 
 export type WorldFactory = (

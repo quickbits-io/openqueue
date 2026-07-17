@@ -253,7 +253,7 @@ async function migrations(): Promise<void> {
   }
 
   const world = await config.world({
-    namespace: resolveNamespace({ namespace: config.namespace }),
+    namespace: resolveNamespace({ namespace: config.namespace }).namespace,
   });
   try {
     if (!world.migrations) {

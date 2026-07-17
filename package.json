@@ -29,6 +29,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "check:control": "bun scripts/check-control-clean.ts",
+    "check:core": "bun scripts/check-core-clean.ts",
     "check:world": "bun scripts/check-world-clean.ts",
     "check:world-postgres": "bun scripts/check-world-postgres-clean.ts",
     "e2e": "docker compose up --wait && turbo run test:transport e2e",

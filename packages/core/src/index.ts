@@ -31,11 +31,6 @@ export {
 export {
   catalogEntryDefinition,
   memoryQueueCatalogStore,
-  publishQueueCatalog,
-  queueCatalogKey,
-  queueCatalogPublishedAtKey,
-  readQueueCatalog,
-  resolveQueueCatalogTask,
   taskCatalogEntry,
 } from './catalog';
 export { composeDrains } from './compose';
@@ -45,8 +40,6 @@ export type {
   QueueConfigTaskModule,
 } from './config';
 export { defineConfig } from './config';
-export type { QueueConnection } from './connection';
-export { closeConnection, createConnection } from './connection';
 export type { QueueTaskDiscovery } from './discovery';
 export {
   defaultTaskDiscoveryExclude,
@@ -66,7 +59,7 @@ export {
   postgresAdapter,
   postgresAlertStore,
 } from './drizzle';
-export { configureEnqueue, enqueue, enqueueFlow } from './enqueue';
+export { enqueue, enqueueFlow } from './enqueue';
 export {
   isNonRetryable,
   JobCanceledError,
@@ -78,19 +71,13 @@ export {
 } from './errors';
 export { consoleLogger } from './logger';
 export type { NamespaceOptions, ResolvedNamespace } from './namespace';
-export {
-  bullPrefix,
-  DEFAULT_BULL_PREFIX,
-  DEFAULT_NAMESPACE,
-  redisKey,
-  resolveNamespace,
-} from './namespace';
+export { DEFAULT_NAMESPACE, resolveNamespace } from './namespace';
 export {
   captureTraceCarrier,
   startRunSpan,
   traceCarrierKey,
 } from './otel-hooks';
-export { createQueue, defaultJobOptions, queue } from './queue';
+export { queue } from './queue';
 export { isTerminalRunStatus } from './runs';
 export type {
   CreateQueueWorkerOptions,
@@ -110,7 +97,6 @@ export {
   scheduleTickJob,
   scheduleTickJobName,
 } from './schedules';
-export { createQueueSchedules } from './schedules-bullmq';
 export {
   attachSpanStore,
   withRunContext,
@@ -178,8 +164,7 @@ export type {
   TaskSchedulesApi,
   UpdateQueueScheduleOptions,
 } from './types';
-export type { CreateWorkerOptions, QueueConcurrency } from './worker';
-export { createWorker } from './worker';
+export type { QueueConcurrency } from './worker';
 export type {
   ActiveTransportJob,
   ConsumeOptions,
@@ -203,6 +188,4 @@ export {
   validateWorld,
   WORLD_SPEC_VERSION,
 } from './world';
-export type { WorldBullmqOptions } from './world-bullmq';
-export { worldBullmq } from './world-bullmq';
 export { worldLocal } from './world-local';

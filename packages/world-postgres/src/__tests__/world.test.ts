@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { worldPostgres } from '../world';
 import { DATABASE_URL, hasDb, testClient } from './test-db';
 
-const ctx = { namespace: { namespace: 'world-test', bullPrefix: 'bull' } };
+const ctx = { namespace: 'world-test' };
 
 describe.runIf(hasDb)('worldPostgres', () => {
   it('builds a world that passes validateWorld', async () => {

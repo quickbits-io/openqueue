@@ -15,6 +15,11 @@ export interface QueueConfig {
   dirs?: string[];
   tasks?: QueueConfigTaskModule | QueueConfigTaskModule[];
   exclude?: string[];
+  /**
+   * BullMQ delivery sugar. Type-only in core: `@openqueue/worker` resolves it to
+   * `worldBullmq({ url, prefix, storage })` via `@openqueue/world-bullmq`. XOR
+   * with `world`.
+   */
   redis?: {
     url: string;
     bullPrefix?: string;

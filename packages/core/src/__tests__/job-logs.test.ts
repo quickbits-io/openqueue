@@ -1,4 +1,3 @@
-import type { Job } from 'bullmq';
 import { describe, expect, it } from 'vitest';
 import { withJobLogs } from '../job-logs';
 
@@ -18,7 +17,7 @@ function fakeJob(latencyMs = 0) {
       inFlight--;
       return lines.length;
     },
-  } as unknown as Job;
+  };
 
   return { job, lines, maxInFlight: () => maxInFlight };
 }
@@ -69,7 +68,7 @@ describe('withJobLogs', () => {
         lines.push(line);
         return lines.length;
       },
-    } as unknown as Job;
+    };
 
     const result = await withJobLogs(job, async () => {
       console.log('lost');

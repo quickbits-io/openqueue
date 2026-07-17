@@ -58,7 +58,9 @@ export async function createControlRuntime(
   options: ControlRuntimeOptions = {},
 ): Promise<ControlRuntime> {
   const namespace = resolveNamespace(options);
-  const resolved = validateWorld(await world({ namespace }));
+  const resolved = validateWorld(
+    await world({ namespace: namespace.namespace }),
+  );
   try {
     await assertMigrationsApplied(resolved);
   } catch (error) {

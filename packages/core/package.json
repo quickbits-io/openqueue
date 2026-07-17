@@ -1,7 +1,7 @@
 {
   "name": "@openqueue/core",
   "version": "0.1.4",
-  "description": "Core engine for OpenQueue — typed tasks, queues, schedules, flows, and persistence on top of BullMQ + Redis.",
+  "description": "Core engine for OpenQueue — typed tasks, queues, schedules, flows, and Drizzle persistence over a pluggable world (delivery transport + durable store).",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/core#readme",
@@ -18,8 +18,6 @@
     "queue",
     "jobs",
     "background-jobs",
-    "bullmq",
-    "redis",
     "worker",
     "bun",
     "typescript"
@@ -80,10 +78,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "bullmq": "^5.71.1",
     "cron-parser": "^4.9.0",
     "drizzle-orm": "^0.45.1",
-    "ioredis": "^5.10.1",
     "jose": "^5.9.6",
     "zod": "^4.1.13"
   },

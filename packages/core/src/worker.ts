@@ -8,17 +8,13 @@ import {
   SpanStatusCode,
   trace,
 } from '@opentelemetry/api';
-import type { Worker } from 'bullmq';
-import type { Redis } from 'ioredis';
 import { composeDrains } from './compose';
 import { isNonRetryable, NonRetryableError, serializeError } from './errors';
 import { withJobLogs } from './job-logs';
 import { consoleLogger } from './logger';
-import type { NamespaceOptions } from './namespace';
 import { buildSnapshot } from './snapshot';
 import { withRunContext } from './span-export';
 import { trigger } from './task';
-import { createBullmqTransport } from './transport/bullmq';
 import type {
   ActiveTransportJob,
   ConsumeOptions,
@@ -32,13 +28,6 @@ import type {
 } from './types';
 
 export type QueueConcurrency = Record<string, number>;
-
-export interface CreateWorkerOptions extends NamespaceOptions {
-  connection: Redis;
-  drain?: QueueDrain;
-  globalConcurrency?: number;
-  queueConcurrency?: QueueConcurrency;
-}
 
 export interface WorkerConsumerOptions {
   drain?: QueueDrain;
@@ -55,23 +44,6 @@ export interface WorkerGroup {
 
 const TRACER_NAME = '@openqueue/sdk';
 const TRACER_VERSION = '0.1.0';
-
-export function createWorker(
-  jobs: TaskDefinition[],
-  options: CreateWorkerOptions,
-): Worker[] {
-  const transport = createBullmqTransport({
-    producer: options.connection,
-    consumer: options.connection,
-    namespace: options.namespace,
-    bullPrefix: options.bullPrefix,
-  });
-  return createWorkerConsumers(jobs, transport, {
-    drain: options.drain,
-    globalConcurrency: options.globalConcurrency,
-    queueConcurrency: options.queueConcurrency,
-  }).map((consumer) => consumer.worker);
-}
 
 export function createWorkerConsumers<C extends TransportConsumer>(
   jobs: TaskDefinition[],

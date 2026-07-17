@@ -50,7 +50,7 @@ export function worldPostgres(options: WorldPostgresOptions): WorldFactory {
     const { sql, owned } = resolveSql(options);
     const transport = createPostgresTransport({
       sql,
-      namespace: ctx.namespace.namespace,
+      namespace: ctx.namespace,
       poll: options.poll,
     });
     const store = postgresAdapter({ db: drizzle(sql), schema: queueSchema });

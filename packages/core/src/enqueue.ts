@@ -1,9 +1,6 @@
-import type { Redis } from 'ioredis';
 import { composeDrains } from './compose';
 import { createEnqueuer, type Enqueuer } from './enqueuer';
-import { type NamespaceOptions, resolveNamespace } from './namespace';
 import { bindQueueRuntime } from './task';
-import { createBullmqTransport } from './transport/bullmq';
 import type { QueueTransport } from './transport/types';
 import type {
   EnqueueOptions,
@@ -14,11 +11,11 @@ import type {
 } from './types';
 
 /**
- * Process-global enqueue facade behind the public `enqueue`/`enqueueFlow`/
- * `configureEnqueue` API. It owns one default {@link Enqueuer} instance; the
- * accumulate-drains contract of `configureEnqueueTransport` recreates that
- * instance so bare `enqueue()`/`task.trigger()` in a single-runtime process stay
- * identical. Runtimes compose their own {@link Enqueuer} for drain isolation.
+ * Process-global enqueue facade behind the public `enqueue`/`enqueueFlow` API.
+ * It owns one default {@link Enqueuer} instance; the accumulate-drains contract
+ * of `configureEnqueueTransport` recreates that instance so bare `enqueue()`/
+ * `task.trigger()` in a single-runtime process stay identical. Runtimes compose
+ * their own {@link Enqueuer} for drain isolation.
  */
 let defaultEnqueuer: Enqueuer | null = null;
 let sharedDrain: QueueDrain = composeDrains();
@@ -45,25 +42,10 @@ export function configureEnqueueTransport(opts: {
   });
 }
 
-export function configureEnqueue(
-  opts: {
-    redis: Redis;
-    drain?: QueueDrain;
-    drains?: QueueDrain[];
-  } & NamespaceOptions,
-): void {
-  const namespace = resolveNamespace(opts);
-  configureEnqueueTransport({
-    transport: createBullmqTransport({ producer: opts.redis, ...namespace }),
-    drain: opts.drain,
-    drains: opts.drains,
-  });
-}
-
 function assertEnqueuer(): Enqueuer {
   if (!defaultEnqueuer) {
     throw new Error(
-      '@openqueue/sdk: enqueue() called before configureEnqueue({ redis, drains? }). Call it at process boot.',
+      '@openqueue/sdk: enqueue() called before the transport was configured. Boot a worker or client (or bind an HTTP client) at process start.',
     );
   }
   return defaultEnqueuer;

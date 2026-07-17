@@ -46,7 +46,7 @@ const parentTask = task({
 const tasks: TaskDefinition[] = [echoTask, childTask, parentTask];
 
 const worlds: Array<[string, () => OpenQueueWorld]> = [
-  ['local', () => worldLocal()({ namespace: resolveNamespace({}) })],
+  ['local', () => worldLocal()({ namespace: resolveNamespace({}).namespace })],
 ];
 
 describe.each(worlds)('world matrix — %s', (_name, buildWorld) => {

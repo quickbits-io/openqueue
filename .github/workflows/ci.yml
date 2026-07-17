@@ -62,6 +62,12 @@ jobs:
       - name: Verify Node package imports
         run: node --input-type=module -e "await Promise.all([import('./packages/core/dist/index.js'), import('./packages/openqueue/dist/index.js')])"
 
+      # Phantom-dependency gate: every @openqueue/core dist entry must ship
+      # without ioredis/bullmq after the world-bullmq extraction — the load-bearing
+      # protection against a stray import that hoisting would let typecheck.
+      - name: Verify core is ioredis/bullmq-free
+        run: bun run check:core
+
       # Freeze gate: the public @openqueue/core/world entry must stay import-clean
       # (no ioredis/bullmq) so non-BullMQ transports can depend on the contract.
       - name: Verify world entry is import-clean

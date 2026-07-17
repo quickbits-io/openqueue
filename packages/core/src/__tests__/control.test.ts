@@ -14,7 +14,9 @@ import { worldLocal } from '../world-local';
 import { catalogEntry } from './support/memory-storage';
 
 function seededWorld(namespace?: string): OpenQueueWorld {
-  const world = worldLocal()({ namespace: resolveNamespace({ namespace }) });
+  const world = worldLocal()({
+    namespace: resolveNamespace({ namespace }).namespace,
+  });
   return world;
 }
 
@@ -146,7 +148,7 @@ describe('createControlRuntime', () => {
     // transport synchronously, so this throws rather than rejects.)
     expect(() =>
       enqueue(catalogEntryDefinition(catalogEntry('echo')), { hi: true }),
-    ).toThrow('enqueue() called before configureEnqueue');
+    ).toThrow('enqueue() called before the transport was configured');
 
     await runtime.close();
   });
