@@ -62,5 +62,161 @@ jobs:
       - name: Verify Node package imports
         run: node --input-type=module -e "await Promise.all([import('./packages/core/dist/index.js'), import('./packages/openqueue/dist/index.js')])"
 
+      # Freeze gate: the public @openqueue/core/world entry must stay import-clean
+      # (no ioredis/bullmq) so non-BullMQ transports can depend on the contract.
+      - name: Verify world entry is import-clean
+        run: bun run check:world
+
+      # Bundle-graph gate: @openqueue/world-postgres must ship without the Redis
+      # stack (drizzle/postgres are expected; ioredis/bullmq are not).
+      - name: Verify world-postgres is Redis-free
+        run: bun run check:world-postgres
+
+      # Bundle-graph gate: the split-control-plane entries (core /auth, /control;
+      # workbench /control) must ship without ioredis/bullmq and build for the
+      # edge (only node:crypto + its polyfill deps survive on the browser target).
+      - name: Verify control-plane entries are edge-clean
+        run: bun run check:control
+
       - name: Test
         run: bun run test
+
+  e2e:
+    name: E2E (control API over real TCP)
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: openqueue
+          POSTGRES_PASSWORD: openqueue
+          POSTGRES_DB: openqueue
+        options: >-
+          --health-cmd "pg_isready -U openqueue -d openqueue"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+      DATABASE_URL: postgres://openqueue:openqueue@localhost:5432/openqueue
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Runs `turbo run e2e` → the e2e package's `bun run db:reset && bun test`,
+      # driving every /openqueue/v1 route over real TCP against the service
+      # containers above. No compose needed in CI.
+      - name: E2E
+        run: bunx turbo run e2e
+
+  e2e-pg:
+    name: E2E (world-postgres, no Redis)
+    runs-on: ubuntu-latest
+    services:
+      # Postgres only — the whole point is proving the suite never touches Redis.
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: openqueue
+          POSTGRES_PASSWORD: openqueue
+          POSTGRES_DB: openqueue
+        options: >-
+          --health-cmd "pg_isready -U openqueue -d openqueue"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      E2E_WORLD: postgres
+      DATABASE_URL: postgres://openqueue:openqueue@localhost:5432/openqueue
+      # Poisoned: any accidental ioredis use fails loudly instead of silently
+      # falling back to a reachable Redis.
+      REDIS_URL: redis://127.0.0.1:9
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bunx turbo run build
+
+      # world-postgres:test:transport (conformance + stall + migrate) and
+      # e2e:e2e both mutate the fixed `openqueue` schema; --concurrency=1
+      # serializes them so neither drops the schema out from under the other.
+      # The scoped filters exclude core:test:transport (BullMQ conformance),
+      # which would try — and fail — to reach the poisoned Redis.
+      - name: E2E
+        run: bunx turbo run test:transport e2e --filter=@openqueue/world-postgres --filter=@openqueue/e2e --concurrency=1
+
+  e2e-split:
+    name: E2E (split control/execution plane, no Redis)
+    runs-on: ubuntu-latest
+    services:
+      # Postgres only — both planes share one database; the control plane never
+      # touches Redis and the execution worker uses the Postgres world.
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: openqueue
+          POSTGRES_PASSWORD: openqueue
+          POSTGRES_DB: openqueue
+        options: >-
+          --health-cmd "pg_isready -U openqueue -d openqueue"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      E2E_WORLD: postgres
+      DATABASE_URL: postgres://openqueue:openqueue@localhost:5432/openqueue
+      # Poisoned: the split suite must never touch Redis.
+      REDIS_URL: redis://127.0.0.1:9
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bunx turbo run build
+
+      # Only the e2e package's e2e:split task — a control plane (never migrates)
+      # and an execution worker (self-migrates) over one Postgres schema. The
+      # @openqueue/e2e filter keeps core:test:transport (BullMQ conformance) out,
+      # which would try — and fail — to reach the poisoned Redis.
+      - name: E2E (split plane)
+        run: bunx turbo run e2e:split --filter=@openqueue/e2e --concurrency=1
