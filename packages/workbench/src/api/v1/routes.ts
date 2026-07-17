@@ -14,6 +14,7 @@ import type {
   QueueSchedulesApi,
   TaskDefinition,
 } from '@openqueue/core';
+import { UnsupportedCapabilityError } from '@openqueue/core/world';
 import { ZodError, type z } from 'zod';
 import { errorMessage } from '../../util';
 import type { HandlerResult, RouteDef } from '../handlers';
@@ -387,6 +388,9 @@ function parseBody<T>(
 }
 
 function triggerError(err: unknown): HandlerResult {
+  if (err instanceof UnsupportedCapabilityError) {
+    return controlError('unsupported_capability', err.message);
+  }
   if (err instanceof ZodError) {
     return controlError(
       'invalid_request',
@@ -401,6 +405,9 @@ function triggerError(err: unknown): HandlerResult {
 }
 
 function scheduleError(err: unknown, id: string): HandlerResult {
+  if (err instanceof UnsupportedCapabilityError) {
+    return controlError('unsupported_capability', err.message);
+  }
   if (
     err instanceof Error &&
     err.message.startsWith('Unknown queue schedule')

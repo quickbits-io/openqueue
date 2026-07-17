@@ -35,7 +35,6 @@ export interface WorkbenchJobDefinition<I = unknown, O = unknown> {
   attempts: number;
   backoff: unknown;
   cron?: string;
-  ttl?: number;
   maxStalledCount?: number;
   tags: string[];
   __input?: I;
@@ -60,10 +59,8 @@ export interface TestEnqueueOptions {
 }
 
 export interface WorkbenchEnqueueResult {
-  id: string;
-  runId?: string;
-  jobId?: string;
-  transportJobId?: string;
+  runId: string;
+  jobId: string;
 }
 
 export interface WorkbenchRegistry {

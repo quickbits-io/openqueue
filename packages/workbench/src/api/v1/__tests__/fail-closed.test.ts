@@ -42,10 +42,8 @@ function options(): ControlApiOptions {
     runtime: {
       catalog: { read: async () => [], resolve: async () => undefined },
       trigger: async () => ({
-        id: 'r1',
         runId: 'r1',
         jobId: 'j1',
-        transportJobId: 'j1',
       }),
       runs,
       schedules,
@@ -85,10 +83,13 @@ describe('control API fail-closed before 404', () => {
     expect((await host.request('/openqueue/v1/health')).status).toBe(200);
 
     // With a valid token the auth walk passes, so an unknown path now reaches
-    // h3's route matcher and returns its 404 (JSON HTTPError) — no longer 401.
+    // the `/**` catch-all, which returns the wire 404 envelope — no longer 401.
     const authed = await host.request('/openqueue/v1/does-not-exist', {
       headers: { Authorization: 'Bearer secret' },
     });
     expect(authed.status).toBe(404);
+    await expect(authed.json()).resolves.toMatchObject({
+      error: { code: 'not_found' },
+    });
   });
 });

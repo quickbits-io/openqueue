@@ -32,7 +32,7 @@ const schedules: WorkbenchSchedulesStorage = {
   retrieve: async (id) => {
     throw new Error(`no schedule ${id}`);
   },
-  runNow: async (id) => ({ id }),
+  runNow: async (id) => ({ runId: id, jobId: id }),
   activate: async (id) => {
     throw new Error(`no schedule ${id}`);
   },
@@ -63,8 +63,8 @@ describe('WorkbenchCore with an explicit empty queue set', () => {
   it('constructs, and getConfig reflects zero queues with a live registry', () => {
     const core = emptyCore({
       jobs: [job()],
-      enqueueJob: async () => ({ id: 'run-1' }),
-      enqueueFlow: async () => ({ id: 'flow-1' }),
+      enqueueJob: async () => ({ runId: 'run-1', jobId: 'run-1' }),
+      enqueueFlow: async () => ({ runId: 'flow-1', jobId: 'flow-1' }),
     });
 
     const config = core.getConfig();
@@ -78,8 +78,8 @@ describe('WorkbenchCore with an explicit empty queue set', () => {
   it('serves /queues as an empty list', async () => {
     const core = emptyCore({
       jobs: [job()],
-      enqueueJob: async () => ({ id: 'run-1' }),
-      enqueueFlow: async () => ({ id: 'flow-1' }),
+      enqueueJob: async () => ({ runId: 'run-1', jobId: 'run-1' }),
+      enqueueFlow: async () => ({ runId: 'flow-1', jobId: 'flow-1' }),
     });
 
     const response = await route(core, 'get', '/queues').handler({
@@ -93,8 +93,8 @@ describe('WorkbenchCore with an explicit empty queue set', () => {
   it('serves /overview with zeroed counts', async () => {
     const core = emptyCore({
       jobs: [job()],
-      enqueueJob: async () => ({ id: 'run-1' }),
-      enqueueFlow: async () => ({ id: 'flow-1' }),
+      enqueueJob: async () => ({ runId: 'run-1', jobId: 'run-1' }),
+      enqueueFlow: async () => ({ runId: 'flow-1', jobId: 'flow-1' }),
     });
 
     const response = await route(core, 'get', '/overview').handler({
@@ -117,9 +117,9 @@ describe('WorkbenchCore with an explicit empty queue set', () => {
       jobs: [job()],
       enqueueJob: async (_entry, input) => {
         calls.push({ input });
-        return { id: 'run-1' };
+        return { runId: 'run-1', jobId: 'run-1' };
       },
-      enqueueFlow: async () => ({ id: 'flow-1' }),
+      enqueueFlow: async () => ({ runId: 'flow-1', jobId: 'flow-1' }),
     });
 
     const response = await route(core, 'post', '/test').handler({

@@ -2090,10 +2090,10 @@ export class QueueManager {
         request.data,
         request.opts,
       );
-      this.invalidateJobCache(job.queue, result.transportJobId ?? result.id);
+      this.invalidateJobCache(job.queue, result.jobId);
 
       return {
-        id: result.id,
+        id: result.runId,
         type: 'job',
         name: job.name,
         queueName: job.queue,
@@ -2114,10 +2114,10 @@ export class QueueManager {
       const result = await this.registry.enqueueFlow(
         withRootOpts(flow.build(input), request.opts),
       );
-      this.invalidateJobCache(flow.queue, result.transportJobId ?? result.id);
+      this.invalidateJobCache(flow.queue, result.jobId);
 
       return {
-        id: result.id,
+        id: result.runId,
         type: 'flow',
         name: flow.name,
         queueName: flow.queue,

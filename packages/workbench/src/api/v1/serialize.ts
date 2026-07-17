@@ -78,7 +78,6 @@ export function wireCatalogEntry(entry: QueueCatalogEntry): WireCatalogEntry {
     attempts: entry.attempts,
     backoff: entry.backoff,
     concurrency: entry.concurrency,
-    ttl: entry.ttl,
     maxStalledCount: entry.maxStalledCount,
     cron: entry.cron,
     tags: entry.tags,
@@ -177,7 +176,6 @@ export function toEnqueueOptions(
     priority: options.priority,
     attempts: options.attempts,
     backoff: options.backoff,
-    ttl: options.ttl,
     meta: options.meta,
   };
 }
@@ -201,10 +199,13 @@ function statusForCode(code: WireErrorCode): number {
       return 403;
     case 'invalid_request':
       return 400;
+    case 'not_found':
     case 'task_not_found':
     case 'run_not_found':
     case 'schedule_not_found':
       return 404;
+    case 'unsupported_capability':
+      return 501;
     case 'internal':
       return 500;
   }

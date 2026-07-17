@@ -4,6 +4,7 @@ import { decodeParams } from '../decode-params';
 import type { HandlerInput, RouteDef } from '../handlers';
 import { authorizeControlRequest, resolveControlAuth } from './auth';
 import { buildControlRouteTable, type ControlApiOptions } from './routes';
+import { controlError } from './serialize';
 
 /**
  * Assemble the `/openqueue/v1` control API as an h3 app. h3 always runs global
@@ -56,6 +57,22 @@ export function buildControlApp(options: ControlApiOptions): H3 {
       dispatch(route, event, principals.get(event)),
     );
   }
+
+  // Authenticated requests to an unregistered path fall through to this
+  // wildcard, which answers with the wire 404 envelope instead of h3's default
+  // HTTPError body. The auth middleware still runs first (global middleware
+  // precedes route matching in h3), so an unauthenticated unknown path is
+  // rejected 401 before reaching here — the fail-closed order is preserved.
+  app.all('/**', (event) => {
+    const result = controlError(
+      'not_found',
+      `No route for ${event.req.method} ${event.url.pathname}`,
+    );
+    return new Response(JSON.stringify(result.body), {
+      status: result.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
 
   return app;
 }

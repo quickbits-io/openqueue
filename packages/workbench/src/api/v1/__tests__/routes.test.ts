@@ -20,10 +20,8 @@ import { buildControlRouteTable, type ControlApiOptions } from '../routes';
 import { toRunListOptions } from '../serialize';
 
 const enqueueResult: EnqueueResult = {
-  id: 'r1',
   runId: 'r1',
   jobId: 'j1',
-  transportJobId: 'j1',
 };
 
 function catalogEntry(

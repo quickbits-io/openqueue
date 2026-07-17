@@ -1042,7 +1042,7 @@ export function buildRouteTable(core: WorkbenchCore): RouteDef[] {
         if (!schedules) return storageError;
         try {
           const result = await schedules.runNow(params.id!);
-          return { status: 200, body: { id: result.id } };
+          return { status: 200, body: { id: result.runId } };
         } catch (err) {
           return { status: 404, body: { error: errorMessage(err) } };
         }
