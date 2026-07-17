@@ -142,9 +142,12 @@ not as free-text. Reserve free-text for the debug/audit narrative.
 
 ## Releases
 
-Releases use Changesets. Add `bun run changeset` to any PR that should ship a
-release; merging to `main` opens a "Version Packages" PR, and merging that
-publishes to npm. All `@openqueue/*` packages version in lockstep.
+Releases use release-please driven by conventional commits (`feat:`, `fix:`,
+`feat!:` for breaking). Merging to `main` maintains a release PR; merging that
+PR publishes to npm via `scripts/publish.ts`. All `@openqueue/*` packages
+version in lockstep (`linked-versions`). Never squash-merge feature branches —
+release-please reads the per-commit type markers. See CONTRIBUTING.md for the
+full flow.
 
 ## Misc
 
