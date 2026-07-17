@@ -116,6 +116,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@openqueue/world-bullmq": "workspace:*",
     "@tailwindcss/vite": "^4.0.0",
     "@types/bun": "^1.2.18",
     "@types/dagre": "^0.7.54",

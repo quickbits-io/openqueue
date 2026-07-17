@@ -4,6 +4,7 @@ import {
   task,
   worldLocal,
 } from '@openqueue/core';
+import { isBullmqTransport } from '@openqueue/world-bullmq';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startWorkerApp } from './index';
 
@@ -52,7 +53,9 @@ describe('validateConfig backend (world XOR redis)', () => {
   });
 
   it('rejects a world paired with a storage adapter', async () => {
-    const store = worldLocal()({ namespace: resolveNamespace({}) }).store;
+    const store = worldLocal()({
+      namespace: resolveNamespace({}).namespace,
+    }).store;
     await expect(
       startWorkerApp({
         namespace: 'test',
@@ -95,7 +98,7 @@ describe('validateConfig accepts a world-only config', () => {
       { port: 0, signals: false, tasks: [noop] },
     );
 
-    expect(app.runtime.queues.size).toBe(0);
+    expect(isBullmqTransport(app.runtime.transport)).toBe(false);
 
     await app.close();
     expect(stopped).toBe(true);

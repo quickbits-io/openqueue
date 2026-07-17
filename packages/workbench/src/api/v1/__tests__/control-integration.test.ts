@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createClient, OpenQueueClientError } from '@openqueue/client';
 import { apiKey, createQueueWorker, task } from '@openqueue/core';
+import { worldBullmq } from '@openqueue/world-bullmq';
 import { H3 } from 'h3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildControlApp } from '../app';
@@ -23,7 +24,7 @@ describe.skipIf(!redisUrl)('control API integration', () => {
   beforeAll(async () => {
     runtime = await createQueueWorker({
       namespace,
-      redis: { url: redisUrl },
+      world: worldBullmq({ url: redisUrl }),
       tasks: [echo],
     });
     const controlRuntime = {

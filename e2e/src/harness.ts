@@ -5,6 +5,7 @@ import {
   type OpenQueueClient,
   OpenQueueClientError,
 } from '@openqueue/client';
+import type { TransportConsumer } from '@openqueue/core';
 import {
   defineConfig,
   getRegisteredTasks,
@@ -12,6 +13,10 @@ import {
   type QueueConfig,
 } from '@openqueue/sdk';
 import { startWorkerApp } from '@openqueue/worker';
+import {
+  type BullmqConsumer,
+  isBullmqTransport,
+} from '@openqueue/world-bullmq';
 import { worldPostgres } from '@openqueue/world-postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -100,27 +105,43 @@ export async function startTestWorker(
       // worker is torn down mid-block. `bun test` fails a run on any unhandled
       // rejection and records them below the process/event handler layer, so
       // the only fix is to prevent them: attach a no-op error handler to each
-      // worker's Redis clients before closing. `blockingConnection` is private
-      // on BullMQ's Worker, reached via typed element access (no cast).
-      await Promise.all(
-        app.runtime.workers.flatMap((worker) =>
-          // biome-ignore lint/complexity/useLiteralKeys: private BullMQ fields; dot access fails typecheck
-          [worker['blockingConnection'], worker['connection']].map(
-            async (connection) => {
+      // worker's Redis clients before closing. Reach the BullMQ workers through
+      // the runtime's `transport`/`consumers` (only a BullMQ world exposes
+      // them); `blockingConnection` is private on BullMQ's Worker, reached via
+      // typed element access (no cast).
+      if (isBullmqTransport(app.runtime.transport)) {
+        await Promise.all(
+          app.runtime.consumers
+            .filter(isBullmqConsumer)
+            .flatMap((consumer) => workerConnections(consumer.worker))
+            .map(async (connection) => {
               try {
                 const client = await connection.client;
                 client.on('error', () => {});
               } catch {
                 // Connection already gone — nothing to silence.
               }
-            },
-          ),
-        ),
-      );
+            }),
+        );
+      }
       await app.close();
       await sql.end();
     },
   };
+}
+
+/** Narrow a transport consumer to the BullMQ shape (carries a `.worker`). */
+function isBullmqConsumer(
+  consumer: TransportConsumer,
+): consumer is BullmqConsumer {
+  return 'worker' in consumer;
+}
+
+/** A BullMQ Worker's two Redis connections — `blockingConnection` and
+ *  `connection` are private, reached via typed element access (no cast). */
+function workerConnections(worker: BullmqConsumer['worker']) {
+  // biome-ignore lint/complexity/useLiteralKeys: private BullMQ fields; dot access fails typecheck
+  return [worker['blockingConnection'], worker['connection']];
 }
 
 /** Boot with NODE_ENV=production and no token — the locked-mode worker.

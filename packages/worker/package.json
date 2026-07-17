@@ -53,6 +53,7 @@
   "dependencies": {
     "@openqueue/core": "workspace:*",
     "@openqueue/workbench": "workspace:*",
+    "@openqueue/world-bullmq": "workspace:*",
     "h3": "2.0.1-rc.25"
   },
   "devDependencies": {

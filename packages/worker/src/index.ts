@@ -21,6 +21,11 @@ import {
   type WorkbenchJobDefinition,
 } from '@openqueue/workbench';
 import { buildControlApp, buildWorkbenchApp } from '@openqueue/workbench/h3';
+import {
+  type BullmqTransport,
+  isBullmqTransport,
+  worldBullmq,
+} from '@openqueue/world-bullmq';
 import { createHealthServer } from './health';
 import { createQueueMetrics } from './metrics';
 
@@ -44,41 +49,26 @@ export async function startWorkerApp(
   config: OpenQueueConfig,
   options: StartWorkerAppOptions = {},
 ): Promise<WorkerApp> {
-  const backend = validateConfig(config);
+  const world = validateConfig(config);
   const cwd = options.cwd ?? configDirs.get(config) ?? process.cwd();
   const tasks = options.tasks ?? (await resolveTasks(config, cwd));
   const drains = [consoleDrain(), ...(config.drains ?? [])];
-  const runtime = await createQueueWorker(
-    backend.world
-      ? {
-          namespace: config.namespace,
-          world: backend.world,
-          tasks,
-          drains,
-          globalConcurrency: config.concurrency?.global,
-          queueConcurrency: config.concurrency?.queues,
-        }
-      : {
-          namespace: config.namespace,
-          bullPrefix: backend.redis.bullPrefix,
-          redis: { url: backend.redis.url },
-          tasks,
-          storage: config.storage?.adapter,
-          drains,
-          globalConcurrency: config.concurrency?.global,
-          queueConcurrency: config.concurrency?.queues,
-        },
-  );
-  const queueNames = Array.from(runtime.queues.keys()).sort();
+  const runtime = await createQueueWorker({
+    namespace: config.namespace,
+    world,
+    tasks,
+    drains,
+    globalConcurrency: config.concurrency?.global,
+    queueConcurrency: config.concurrency?.queues,
+  });
+  const queues = bullmqQueues(runtime);
+  const queueNames = queues.map((queue) => queue.name).sort();
   const state = { ready: true };
   const health = createHealthServer(state, {
     metrics:
       config.metrics?.enabled === false
         ? undefined
-        : createQueueMetrics(
-            Array.from(runtime.queues.values()),
-            config.metrics?.prefix,
-          ),
+        : createQueueMetrics(queues, config.metrics?.prefix),
   });
 
   const controlAuth = resolveControlAuth(
@@ -110,9 +100,9 @@ export async function startWorkerApp(
     const basePath = config.workbench.basePath ?? '/workbench';
     health.mount(
       basePath,
-      buildWorkbenchApp(createWorkbenchForRuntime(runtime, config)),
+      buildWorkbenchApp(createWorkbenchForRuntime(runtime, config, queues)),
     );
-    if (runtime.queues.size === 0) {
+    if (queues.length === 0) {
       console.log(
         '[openqueue] workbench: no BullMQ queues on this world — queue/run pages will be empty; use /openqueue/v1 for run history',
       );
@@ -127,7 +117,7 @@ export async function startWorkerApp(
   });
 
   console.log(
-    `[openqueue] started ${runtime.workers.length} workers across ${queueNames.length} queues with global concurrency ${config.concurrency?.global ?? 'unbounded'}`,
+    `[openqueue] started ${runtime.consumers.length} consumers across ${queueNames.length} queues with global concurrency ${config.concurrency?.global ?? 'unbounded'}`,
   );
   console.log(`[openqueue] published ${runtime.catalog.length} tasks`);
   console.log(`[openqueue] health server listening on :${port}`);
@@ -156,12 +146,12 @@ export async function startWorkerApp(
   return { runtime, port: server.port ?? port, close };
 }
 
-/** The delivery backend a validated config resolves to: a world XOR a Redis. */
-type ValidatedBackend =
-  | { world: WorldFactory; redis?: undefined }
-  | { redis: { url: string; bullPrefix?: string }; world?: undefined };
-
-function validateConfig(config: OpenQueueConfig): ValidatedBackend {
+/**
+ * Validate the config and resolve its delivery backend to a {@link WorldFactory}.
+ * The `redis` sugar becomes `worldBullmq({ url, prefix, storage })` — the sole
+ * place the worker reaches for `@openqueue/world-bullmq`.
+ */
+function validateConfig(config: OpenQueueConfig): WorldFactory {
   if (!config.namespace?.trim()) {
     throw new Error('OpenQueue config requires namespace');
   }
@@ -185,21 +175,42 @@ function validateConfig(config: OpenQueueConfig): ValidatedBackend {
         'OpenQueue config: the world owns durable state; configure it inside the world factory',
       );
     }
-    return { world: config.world };
+    return config.world;
   }
   if (config.redis?.url) {
-    return { redis: config.redis };
+    return worldBullmq({
+      url: config.redis.url,
+      prefix: config.redis.bullPrefix,
+      storage: config.storage?.adapter,
+    });
   }
   throw new Error('OpenQueue config requires redis.url or world');
+}
+
+type BullmqQueue = ReturnType<BullmqTransport['queue']>;
+
+/**
+ * The BullMQ `Queue` instances the dashboard and metrics read, or `[]` on a
+ * non-BullMQ world. One per task queue (the schedule-tick queue is excluded, as
+ * before); `transport.queue()` caches, so repeated calls share instances.
+ */
+function bullmqQueues(runtime: QueueWorkerRuntime): BullmqQueue[] {
+  const transport = runtime.transport;
+  if (!isBullmqTransport(transport)) return [];
+  const names = Array.from(
+    new Set(runtime.tasks.map((task) => task.queue)),
+  ).sort();
+  return names.map((name) => transport.queue(name));
 }
 
 export function createWorkbenchForRuntime(
   runtime: QueueWorkerRuntime,
   config: OpenQueueConfig,
+  queues: BullmqQueue[] = bullmqQueues(runtime),
 ): WorkbenchCore {
   const workbench = config.workbench ?? {};
   return new WorkbenchCore({
-    queues: Array.from(runtime.queues.values()),
+    queues,
     title: workbench.title ?? 'OpenQueue',
     prefix: config.redis?.bullPrefix ?? 'bull',
     readonly: workbench.readonly ?? false,

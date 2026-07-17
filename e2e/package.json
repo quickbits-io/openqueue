@@ -15,6 +15,7 @@
     "@openqueue/sdk": "workspace:*",
     "@openqueue/worker": "workspace:*",
     "@openqueue/workbench": "workspace:*",
+    "@openqueue/world-bullmq": "workspace:*",
     "@openqueue/world-postgres": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "h3": "2.0.1-rc.25",
