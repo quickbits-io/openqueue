@@ -9,12 +9,14 @@ import type {
   QueueConfigTaskModule,
   QueueTaskDiscovery,
   TaskDefinition,
+  WorldMigrationStep,
 } from '@openqueue/core';
 import {
   clearRegisteredTasks,
   clearTaskDiscoveryContext,
   defaultTaskDiscoveryExclude,
   getRegisteredTasks,
+  resolveNamespace,
   setTaskDiscoveryContext,
   sortTaskFiles,
   validateTaskDefinitions,
@@ -38,6 +40,8 @@ try {
   } else if (command === 'build') {
     await build();
     process.exit(0);
+  } else if (command === 'migrations') {
+    await migrations();
   } else {
     help();
   }
@@ -232,6 +236,86 @@ async function start(options: { preferManifest: boolean }): Promise<void> {
       ? undefined
       : await loadDirectTasks(config, cwd),
   });
+}
+
+async function migrations(): Promise<void> {
+  const sub = args.find((arg) => arg === 'print' || arg === 'status');
+  if (!sub) {
+    console.error('Usage: openqueue migrations <print|status>');
+    process.exit(1);
+  }
+
+  const { config } = await loadCliConfig();
+  if (!config.world) {
+    throw new Error(
+      'OpenQueue migrations require a world-backed config (config.world), e.g. worldPostgres from @openqueue/world-postgres. Redis-backed workers have no migrations.',
+    );
+  }
+
+  const world = await config.world({
+    namespace: resolveNamespace({ namespace: config.namespace }),
+  });
+  try {
+    if (!world.migrations) {
+      throw new Error(
+        `OpenQueue world (transport "${world.transport.id}") does not expose migrations.`,
+      );
+    }
+
+    if (sub === 'print') {
+      console.log(assembleMigrationScript(world.migrations.steps));
+      return;
+    }
+
+    const statuses = await world.migrations.status();
+    let mismatch = false;
+    for (const status of statuses) {
+      const label =
+        status.state === 'checksum_mismatch' ? 'MISMATCH' : status.state;
+      const appliedAt = status.appliedAt
+        ? ` ${status.appliedAt.toISOString()}`
+        : '';
+      console.log(`${label}\t${status.id}${appliedAt}`);
+      if (status.state === 'checksum_mismatch') mismatch = true;
+    }
+    if (mismatch) process.exitCode = 1;
+  } finally {
+    await world.close();
+  }
+}
+
+/**
+ * Assemble the committed steps into a script an operator can paste into psql.
+ * Each step is its own `BEGIN … COMMIT` unit that runs the step DDL and then
+ * writes the `__openqueue_migrations` bookkeeping row auto-apply would have
+ * written — without it, `status` stays `pending` and boot refuses to start. The
+ * schema + bookkeeping-table bootstrap is emitted once, inside the first unit;
+ * its text is kept identical to the world's runner so a hand-applied print
+ * produces the exact same database state. The CLI is world-agnostic and can't
+ * import the world package, so this canonical text lives here and is
+ * cross-checked against the runner in @openqueue/world-postgres's migration
+ * suite. `id`/`checksum` are generator-produced constants; single quotes are
+ * escaped defensively, matching the runner.
+ */
+function assembleMigrationScript(steps: readonly WorldMigrationStep[]): string {
+  const bootstrapSql = `CREATE SCHEMA IF NOT EXISTS "openqueue";
+CREATE TABLE IF NOT EXISTS "openqueue"."__openqueue_migrations" (
+  "id" text primary key,
+  "checksum" text not null,
+  "applied_at" timestamptz not null default now()
+);`;
+  return steps
+    .map((step, index) => {
+      const id = step.id.replace(/'/g, "''");
+      const checksum = step.checksum.replace(/'/g, "''");
+      const bootstrap = index === 0 ? `${bootstrapSql}\n` : '';
+      return `-- ${step.id}
+BEGIN;
+${bootstrap}${step.sql.trimEnd()}
+INSERT INTO "openqueue"."__openqueue_migrations" (id, checksum) VALUES ('${id}', '${checksum}');
+COMMIT;`;
+    })
+    .join('\n\n');
 }
 
 async function build(): Promise<void> {
@@ -833,5 +917,6 @@ Commands:
   dev       Start the worker from task source files
   build     Generate .openqueue/build/manifest.mjs
   start     Start the worker, preferring the generated manifest
+  migrations  Print or check world migrations (print | status)
 `);
 }
