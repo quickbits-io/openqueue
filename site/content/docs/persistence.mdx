@@ -105,9 +105,7 @@ export default defineConfig({
   namespace: 'my-app',
   dirs: ['./worker'],
   redis: { url: process.env.REDIS_URL! },
-  storage: {
-    adapter: postgresAdapter({ db, schema: queueSchema }),
-  },
+  storage: postgresAdapter({ db, schema: queueSchema }),
 });
 ```
 

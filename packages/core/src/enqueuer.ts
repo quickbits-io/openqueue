@@ -77,10 +77,7 @@ function buildJobData<I>(
 type QueueJobData = ReturnType<typeof buildJobData>;
 
 function buildJobSpec(
-  def: Pick<
-    TaskDefinition<unknown, unknown>,
-    'name' | 'attempts' | 'backoff' | 'ttl'
-  >,
+  def: Pick<TaskDefinition<unknown, unknown>, 'name' | 'attempts' | 'backoff'>,
   runId: string,
   data: QueueJobData,
   opts?: EnqueueOptions,
@@ -93,7 +90,6 @@ function buildJobSpec(
     priority: opts?.priority,
     attempts: opts?.attempts ?? def.attempts,
     backoff: opts?.backoff ?? def.backoff,
-    ttl: opts?.ttl ?? def.ttl,
     failParentOnFailure: opts?.failParentOnFailure,
     continueParentOnFailure: opts?.continueParentOnFailure,
     ignoreDependencyOnFailure: opts?.ignoreDependencyOnFailure,
@@ -283,10 +279,8 @@ export function createEnqueuer(options: EnqueuerOptions): Enqueuer {
     }
 
     return {
-      id: runId,
       runId,
       jobId: result.jobId,
-      transportJobId: result.jobId,
     };
   }
 
@@ -304,10 +298,8 @@ export function createEnqueuer(options: EnqueuerOptions): Enqueuer {
     }
 
     return {
-      id: node.runId,
       runId: node.runId,
       jobId: result.jobId,
-      transportJobId: result.jobId,
     };
   }
 

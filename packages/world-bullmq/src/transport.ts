@@ -137,14 +137,13 @@ export function createBullmqTransport(
   };
 }
 
-function toJobsOptions(spec: TransportJobSpec): JobsOptions & { ttl?: number } {
+function toJobsOptions(spec: TransportJobSpec): JobsOptions {
   return {
     jobId: spec.id,
     delay: spec.delay,
     priority: spec.priority,
     attempts: spec.attempts,
     backoff: spec.backoff,
-    ttl: spec.ttl,
     failParentOnFailure: spec.failParentOnFailure,
     continueParentOnFailure: spec.continueParentOnFailure,
     ignoreDependencyOnFailure: spec.ignoreDependencyOnFailure,

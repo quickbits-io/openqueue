@@ -211,9 +211,7 @@ Wire the adapter into your worker config:
 
   export default defineConfig({
     // …
-    storage: {
-      adapter: postgresAdapter({ db, schema: queueSchema }),
-    },
+    storage: postgresAdapter({ db, schema: queueSchema }),
   });
 
 \`db\` is your Drizzle database instance.`);

@@ -66,10 +66,8 @@ describe.skipIf(!url)('schedule stale-tick removal (real redis)', () => {
       storage,
       resolveTask: async () => catalogEntry('echo'),
       trigger: async () => ({
-        id: 'run',
         runId: 'run',
         jobId: 'run',
-        transportJobId: 'run',
       }),
       namespace,
     });

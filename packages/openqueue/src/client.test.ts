@@ -23,10 +23,8 @@ describe('sdk createClient binding', () => {
       });
       return new Response(
         JSON.stringify({
-          id: 'r1',
           runId: 'r1',
           jobId: 'j1',
-          transportJobId: 'j1',
         }),
         { status: 201, headers: { 'Content-Type': 'application/json' } },
       );

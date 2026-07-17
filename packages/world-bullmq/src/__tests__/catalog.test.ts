@@ -123,7 +123,6 @@ function job(
     tags: input.tags ?? [],
     description: input.description,
     cron: input.cron,
-    ttl: input.ttl,
   };
 }
 
@@ -246,10 +245,8 @@ describe('queue catalog', () => {
       (item) => item.name === 'documents',
     )!;
     expect(result).toMatchObject({
-      id: 'run-1',
       runId: 'run-1',
       jobId: 'run-1',
-      transportJobId: 'run-1',
     });
     expect(queue.name).toBe('documents');
     expect(queue.adds[0]).toMatchObject({

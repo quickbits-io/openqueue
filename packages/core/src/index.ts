@@ -34,11 +34,7 @@ export {
   taskCatalogEntry,
 } from './catalog';
 export { composeDrains } from './compose';
-export type {
-  OpenQueueConfig,
-  QueueConfig,
-  QueueConfigTaskModule,
-} from './config';
+export type { OpenQueueConfig, QueueConfigTaskModule } from './config';
 export { defineConfig } from './config';
 export type { QueueTaskDiscovery } from './discovery';
 export {
@@ -77,7 +73,6 @@ export {
   startRunSpan,
   traceCarrierKey,
 } from './otel-hooks';
-export { queue } from './queue';
 export { isTerminalRunStatus } from './runs';
 export type {
   CreateQueueWorkerOptions,
@@ -132,7 +127,6 @@ export type {
   QueueCatalogEntry,
   QueueCatalogStore,
   QueueDefinition,
-  QueueDefinitionInput,
   QueueDrain,
   QueueDrainEvent,
   QueueRun,

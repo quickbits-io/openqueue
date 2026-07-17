@@ -60,7 +60,7 @@ describe('validateConfig backend (world XOR redis)', () => {
       startWorkerApp({
         namespace: 'test',
         world: worldLocal(),
-        storage: { adapter: store },
+        storage: store,
         tasks: { module: './noop' },
       }),
     ).rejects.toThrow(/world owns durable state/);

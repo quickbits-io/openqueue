@@ -107,10 +107,8 @@ describe('createEnqueuer', () => {
     );
 
     expect(result).toMatchObject({
-      id: 'r1',
       runId: 'r1',
       jobId: 'job-1',
-      transportJobId: 'job-1',
     });
     expect(events.map((event) => event.type)).toEqual(['enqueue']);
   });

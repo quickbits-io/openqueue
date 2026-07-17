@@ -101,7 +101,6 @@ export interface TaskDefinitionInput<I = unknown, O = unknown> {
   attempts?: number;
   backoff?: BackoffOptions | number;
   cron?: string;
-  ttl?: number;
   maxStalledCount?: number;
   tags?: string[];
 }
@@ -117,7 +116,6 @@ export interface TaskDefinition<I = unknown, O = unknown> {
   attempts: number;
   backoff: BackoffOptions;
   cron?: string;
-  ttl?: number;
   maxStalledCount?: number;
   tags: string[];
   __input?: I;
@@ -125,11 +123,6 @@ export interface TaskDefinition<I = unknown, O = unknown> {
 }
 
 export interface QueueDefinition {
-  name: string;
-  concurrency?: number;
-}
-
-export interface QueueDefinitionInput {
   name: string;
   concurrency?: number;
 }
@@ -164,7 +157,6 @@ export interface EnqueueOptions {
   priority?: number;
   attempts?: number;
   backoff?: BackoffOptions | number;
-  ttl?: number;
   failParentOnFailure?: boolean;
   continueParentOnFailure?: boolean;
   ignoreDependencyOnFailure?: boolean;
@@ -172,10 +164,8 @@ export interface EnqueueOptions {
 }
 
 export interface EnqueueResult {
-  id: string;
   runId: string;
   jobId: string;
-  transportJobId: string;
 }
 
 export interface ScheduledTaskPayload {
@@ -307,7 +297,6 @@ export interface FlowTaskDefinition {
   schema?: { parse(input: unknown): unknown };
   attempts: number;
   backoff: BackoffOptions;
-  ttl?: number;
   maxStalledCount?: number;
   tags: string[];
 }
@@ -340,7 +329,6 @@ export interface QueueCatalogEntry {
   attempts: number;
   backoff: BackoffOptions;
   concurrency: number;
-  ttl?: number;
   maxStalledCount?: number;
   cron?: string;
   tags: string[];

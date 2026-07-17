@@ -9,8 +9,8 @@ import type { TransportConsumer } from '@openqueue/core';
 import {
   defineConfig,
   getRegisteredTasks,
+  type OpenQueueConfig,
   postgresAdapter,
-  type QueueConfig,
 } from '@openqueue/sdk';
 import { startWorkerApp } from '@openqueue/worker';
 import {
@@ -41,8 +41,8 @@ export async function startTestWorker(
   options: {
     token?: string | false;
     /** Full `api` config; wins over the `token` shorthand when set. */
-    api?: QueueConfig['api'];
-    workbench?: QueueConfig['workbench'];
+    api?: OpenQueueConfig['api'];
+    workbench?: OpenQueueConfig['workbench'];
     /** Fixed namespace — used by the split-plane suite to share one with the control plane. */
     namespace?: string;
   } = {},
@@ -72,7 +72,7 @@ export async function startTestWorker(
           namespace,
           dirs: ['./src/worker'],
           redis: { url: REDIS_URL },
-          storage: { adapter: postgresAdapter({ db, schema: queueSchema }) },
+          storage: postgresAdapter({ db, schema: queueSchema }),
           api,
           workbench: options.workbench,
         });

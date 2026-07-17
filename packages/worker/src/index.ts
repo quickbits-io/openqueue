@@ -181,7 +181,7 @@ function validateConfig(config: OpenQueueConfig): WorldFactory {
     return worldBullmq({
       url: config.redis.url,
       prefix: config.redis.bullPrefix,
-      storage: config.storage?.adapter,
+      storage: config.storage,
     });
   }
   throw new Error('OpenQueue config requires redis.url or world');
@@ -222,7 +222,7 @@ export function createWorkbenchForRuntime(
       spans: runtime.spans,
     },
     alerts: {
-      persistence: config.storage?.adapter
+      persistence: config.storage
         ? 'postgres'
         : config.world
           ? 'custom'
@@ -350,7 +350,6 @@ function catalogJob(entry: QueueCatalogEntry): WorkbenchJobDefinition {
     attempts: entry.attempts,
     backoff: entry.backoff,
     cron: entry.cron,
-    ttl: entry.ttl,
     maxStalledCount: entry.maxStalledCount,
     tags: entry.tags,
   };

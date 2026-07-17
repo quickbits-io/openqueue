@@ -123,10 +123,8 @@ describe('enqueueFlow', () => {
     };
 
     expect(result).toMatchObject({
-      id: 'root-job',
       runId: 'root-job',
       jobId: 'root-job',
-      transportJobId: 'root-job',
     });
     expect(flow.children?.[0]?.opts).toMatchObject({
       jobId: 'child-job',

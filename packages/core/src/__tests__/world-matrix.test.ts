@@ -117,7 +117,7 @@ describe.each(worlds)('world matrix — %s', (_name, buildWorld) => {
     expect(outcome.outcome).toBe('canceled');
 
     expect(
-      await world.transport.getJob('default', result.transportJobId),
+      await world.transport.getJob('default', result.jobId),
     ).toBeUndefined();
     const after = await runtime.runs.retrieve(result.runId);
     expect(after?.status).toBe('canceled');

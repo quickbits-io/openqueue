@@ -15,7 +15,6 @@ export function taskCatalogEntry(
     attempts: def.attempts,
     backoff: def.backoff,
     concurrency: def.concurrency,
-    ttl: def.ttl,
     maxStalledCount: def.maxStalledCount,
     cron: def.cron,
     tags: def.tags,
@@ -46,7 +45,6 @@ export function catalogEntryDefinition(
     attempts: entry.attempts,
     backoff: entry.backoff,
     cron: entry.cron,
-    ttl: entry.ttl,
     maxStalledCount: entry.maxStalledCount,
     tags: entry.tags,
   };

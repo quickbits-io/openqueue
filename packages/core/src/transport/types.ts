@@ -51,8 +51,6 @@ export interface TransportJobSpec {
   priority?: number;
   attempts?: number;
   backoff?: BackoffOptions | number;
-  /** Opaque per-job time-to-live, passed through to the transport untouched. */
-  ttl?: number;
   retention?: TransportRetention;
   failParentOnFailure?: boolean;
   continueParentOnFailure?: boolean;

@@ -58,7 +58,6 @@ interface CatalogRow {
   attempts: number;
   backoff: BackoffOptions;
   concurrency: number;
-  ttl: number | null;
   max_stalled_count: number | null;
   cron: string | null;
   tags: string[];
@@ -754,7 +753,6 @@ function catalogValues(entry: QueueCatalogEntry) {
     attempts: entry.attempts,
     backoff: entry.backoff,
     concurrency: entry.concurrency,
-    ttl: entry.ttl,
     maxStalledCount: entry.maxStalledCount,
     cron: entry.cron,
     tags: entry.tags,
@@ -773,7 +771,6 @@ function catalogSelect(schema: QueueDrizzleSchema) {
     attempts: schema.queueCatalog.attempts,
     backoff: schema.queueCatalog.backoff,
     concurrency: schema.queueCatalog.concurrency,
-    ttl: schema.queueCatalog.ttl,
     max_stalled_count: schema.queueCatalog.maxStalledCount,
     cron: schema.queueCatalog.cron,
     tags: schema.queueCatalog.tags,
@@ -884,7 +881,6 @@ function mapCatalog(row: CatalogRow): QueueCatalogEntry {
     attempts: row.attempts,
     backoff: row.backoff,
     concurrency: row.concurrency,
-    ttl: row.ttl ?? undefined,
     maxStalledCount: row.max_stalled_count ?? undefined,
     cron: row.cron ?? undefined,
     tags: row.tags,

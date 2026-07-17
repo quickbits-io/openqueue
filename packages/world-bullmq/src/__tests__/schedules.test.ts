@@ -340,9 +340,7 @@ describe('queue schedules', () => {
 
 function enqueueResult(id: string) {
   return {
-    id,
     runId: id,
     jobId: id,
-    transportJobId: id,
   };
 }
