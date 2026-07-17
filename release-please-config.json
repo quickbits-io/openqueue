@@ -15,6 +15,7 @@
         "sdk",
         "workbench",
         "worker",
+        "world-bullmq",
         "world-postgres"
       ]
     }
@@ -26,6 +27,7 @@
     "packages/openqueue": { "component": "sdk" },
     "packages/workbench": { "component": "workbench" },
     "packages/worker": { "component": "worker" },
+    "packages/world-bullmq": { "component": "world-bullmq" },
     "packages/world-postgres": { "component": "world-postgres" }
   }
 }

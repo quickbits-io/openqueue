@@ -5,5 +5,6 @@
   "packages/openqueue": "0.1.4",
   "packages/workbench": "0.1.4",
   "packages/worker": "0.1.4",
+  "packages/world-bullmq": "0.1.4",
   "packages/world-postgres": "0.1.4"
 }

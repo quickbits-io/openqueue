@@ -72,9 +72,10 @@ Per-package work: `cd packages/<pkg> && bun run build|test|typecheck`.
 
 | Package | Name | Runtime | Notes |
 | --- | --- | --- | --- |
-| `packages/core` | `@openqueue/core` | Node 18+ / Bun | Engine: tasks, queues, schedules, flows, persistence (Drizzle), OTel hooks. |
+| `packages/core` | `@openqueue/core` | Node 18+ / Bun | Engine: tasks, queues, schedules, flows, Drizzle persistence, OTel hooks — transport-agnostic (no ioredis/bullmq; delivery comes from a world). |
 | `packages/openqueue` | `@openqueue/sdk` | Node 18+ / Bun | Flagship package; re-exports core. The import users write. |
 | `packages/client` | `@openqueue/client` | Node 18+ / Bun / edge | Fetch-only HTTP client for a deployed worker; zero Redis/DB deps (only `zod`). |
+| `packages/world-bullmq` | `@openqueue/world-bullmq` | Node 20.11+ / Bun | BullMQ world (default delivery): Redis transport + write-through store. Owns ioredis/bullmq; the worker resolves `redis:` config sugar to it. |
 | `packages/world-postgres` | `@openqueue/world-postgres` | Node 18+ / Bun | Self-migrating Postgres world: `SELECT … FOR UPDATE SKIP LOCKED` transport + Drizzle store, zero Redis. |
 | `packages/worker` | `@openqueue/worker` | **Bun only** | Worker app; uses `Bun.serve`, loads config, serves Workbench. |
 | `packages/cli` | `@openqueue/cli` | **Bun only** | `openqueue` binary; uses `Bun.build`/`Bun.spawn`/`Bun.Glob`. |
