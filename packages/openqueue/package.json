@@ -55,14 +55,17 @@
     "clean": "rm -rf .turbo node_modules dist",
     "lint": "biome check .",
     "format": "biome format --write .",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@openqueue/client": "workspace:*",
     "@openqueue/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.10",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }
