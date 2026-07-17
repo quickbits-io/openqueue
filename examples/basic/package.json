@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "test -f .env || cp .env.example .env && bun run worker:dev",
+    "dev": "test -f .env || cp .env.example .env && bun run db:push && bun run worker:dev",
+    "db:push": "bun scripts/db-push.ts",
     "worker:dev": "openqueue dev --env-file .env",
     "worker:build": "openqueue build",
     "worker:start": "openqueue start --env-file .env"
@@ -12,10 +13,14 @@
   "dependencies": {
     "@openqueue/sdk": "workspace:*",
     "@openqueue/cli": "workspace:*",
+    "@openqueue/world-bullmq": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "postgres": "^3.4.5",
     "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/bun": "^1.2.18",
+    "drizzle-kit": "^0.31.10",
     "typescript": "^5.9.3"
   }
 }
