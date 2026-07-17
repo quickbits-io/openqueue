@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
+import {
+  createQueueWorker,
+  resolveNamespace,
+  task,
+  worldLocal,
+} from '@openqueue/core';
+import type { TaskDefinition } from '@openqueue/core/types';
 import { Redis } from 'ioredis';
 import { describe, expect, it } from 'vitest';
-import { resolveNamespace } from '../namespace';
-import { createQueueWorker } from '../runtime';
-import { task } from '../task';
-import type { TaskDefinition } from '../types';
-import { worldBullmq } from '../world-bullmq';
-import { worldLocal } from '../world-local';
+import { worldBullmq } from '../world';
 
 /**
  * The public world surface Stage C froze: `createQueueWorker({ world })` boots a
@@ -71,7 +73,7 @@ describe.skipIf(!redisUrl)(
 
         const namespace = resolveNamespace({
           namespace: `world-own-${randomUUID()}`,
-        });
+        }).namespace;
         const world = worldBullmq({
           url: redisUrl ?? 'redis://localhost:6380',
         })({ namespace });

@@ -1,17 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { createQueueClient } from '@openqueue/core';
+import type { TaskDefinition } from '@openqueue/core/types';
 import { Redis } from 'ioredis';
 import { afterAll, describe, expect, it } from 'vitest';
-import { createQueueClient } from '../runtime';
-import type { TaskDefinition } from '../types';
+import { worldBullmq } from '../world';
 
 const url = process.env.REDIS_URL;
 
 /**
- * The client path now builds its own transport (queue cache) rather than
- * reaching for BullMQ directly. This pins that `createQueueClient().close()`
- * closes the transport it owns without hanging, and — when handed a caller-owned
- * Redis client — never closes that borrowed connection (the ownership boundary
- * a transport-owned queue cache could regress).
+ * The client path builds its own transport (queue cache) over the BullMQ world.
+ * This pins that `createQueueClient().close()` closes the transport it owns
+ * without hanging, and — when handed a caller-owned Redis client via
+ * `worldBullmq({ producer })` — never closes that borrowed connection.
  */
 describe.skipIf(!url)('createQueueClient close (real redis)', () => {
   const borrowed = new Redis(url ?? 'redis://localhost:6380', {
@@ -35,8 +35,8 @@ describe.skipIf(!url)('createQueueClient close (real redis)', () => {
   };
 
   it('closes cleanly and leaves a borrowed connection open', async () => {
-    const client = createQueueClient({
-      redis: borrowed,
+    const client = await createQueueClient({
+      world: worldBullmq({ producer: borrowed }),
       namespace: `client-${randomUUID().slice(0, 8)}`,
     });
 

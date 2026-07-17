@@ -1,3 +1,12 @@
+import { resolveNamespace } from '@openqueue/core';
+import type {
+  ConsumeOptions,
+  QueueTransport,
+  TransportCapabilities,
+  TransportConsumer,
+  TransportFlowNode,
+  TransportJobSpec,
+} from '@openqueue/core/world';
 import {
   type ConnectionOptions,
   type FlowJob,
@@ -9,20 +18,14 @@ import {
   Worker,
 } from 'bullmq';
 import type { Redis } from 'ioredis';
-import {
-  bullPrefix,
-  type NamespaceOptions,
-  resolveNamespace,
-} from '../namespace';
-import { defaultJobOptions } from '../queue';
-import type {
-  ConsumeOptions,
-  QueueTransport,
-  TransportCapabilities,
-  TransportConsumer,
-  TransportFlowNode,
-  TransportJobSpec,
-} from './types';
+
+/** Root BullMQ key prefix; the transport uses `${prefix}:${namespace}`. */
+const DEFAULT_BULL_PREFIX = 'bull';
+
+export const defaultJobOptions = {
+  removeOnComplete: { age: 7 * 24 * 3600, count: 20_000 },
+  removeOnFail: { age: 30 * 24 * 3600, count: 5_000 },
+};
 
 const capabilities: TransportCapabilities = {
   delay: true,
@@ -43,10 +46,13 @@ export interface BullmqTransport extends QueueTransport {
   consume(name: string, options: ConsumeOptions): BullmqConsumer;
 }
 
-export interface CreateBullmqTransportOptions extends NamespaceOptions {
+export interface CreateBullmqTransportOptions {
   producer: Redis;
   /** Blocking connection for consumers; defaults to `producer`. */
   consumer?: Redis;
+  namespace?: string;
+  /** Root BullMQ key prefix; the transport uses `${prefix}:${namespace}`. */
+  prefix?: string;
 }
 
 export function isBullmqTransport(
@@ -58,8 +64,10 @@ export function isBullmqTransport(
 export function createBullmqTransport(
   options: CreateBullmqTransportOptions,
 ): BullmqTransport {
-  const namespace = resolveNamespace(options);
-  const prefix = bullPrefix(namespace);
+  const namespace = resolveNamespace({
+    namespace: options.namespace,
+  }).namespace;
+  const prefix = `${options.prefix ?? DEFAULT_BULL_PREFIX}:${namespace}`;
   // ioredis clients are not structurally `ConnectionOptions`; BullMQ accepts a
   // live client here. This is the single place the coercion lives.
   const connection = options.producer as unknown as ConnectionOptions;

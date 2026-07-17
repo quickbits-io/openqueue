@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Redis } from 'ioredis';
 import { afterAll, describe } from 'vitest';
-import { createBullmqTransport } from '../bullmq';
-import { describeTransportConformance } from '../conformance';
+// Source-relative import (not a published subpath): the conformance harness is a
+// vitest-coupled test fixture with no external consumers, so it is not frozen on
+// a `@openqueue/core` subpath at 1.0.
+import { describeTransportConformance } from '../../../core/src/transport/conformance';
+import { createBullmqTransport } from '../transport';
 
 const url = process.env.REDIS_URL;
 

@@ -1,15 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import { Redis } from 'ioredis';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { NonRetryableError } from '../errors';
-import type { BullmqConsumer } from '../transport/bullmq';
-import { createBullmqTransport } from '../transport/bullmq';
+import { NonRetryableError } from '@openqueue/core';
 import type {
   QueueDrainEvent,
   QueueRunSnapshot,
   TaskDefinition,
-} from '../types';
-import { createWorkerConsumers } from '../worker';
+} from '@openqueue/core/types';
+import { Redis } from 'ioredis';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
+// Source-relative: createWorkerConsumers is a package-private core helper (not a
+// frozen export). isNonRetryable's structural `retryable === false` check keeps a
+// cross-instance NonRetryableError recognized as final.
+import { createWorkerConsumers } from '../../../core/src/worker';
+import type { BullmqConsumer } from '../transport';
+import { createBullmqTransport } from '../transport';
 
 const url = process.env.REDIS_URL;
 

@@ -22,6 +22,7 @@
         "@openqueue/sdk": "workspace:*",
         "@openqueue/workbench": "workspace:*",
         "@openqueue/worker": "workspace:*",
+        "@openqueue/world-bullmq": "workspace:*",
         "@openqueue/world-postgres": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "h3": "2.0.1-rc.25",
@@ -100,10 +101,8 @@
       "name": "@openqueue/core",
       "version": "0.1.4",
       "dependencies": {
-        "bullmq": "^5.71.1",
         "cron-parser": "^4.9.0",
         "drizzle-orm": "^0.45.1",
-        "ioredis": "^5.10.1",
         "jose": "^5.9.6",
         "zod": "^4.1.13",
       },
@@ -180,6 +179,7 @@
         "zod": "^4.1.13",
       },
       "devDependencies": {
+        "@openqueue/world-bullmq": "workspace:*",
         "@tailwindcss/vite": "^4.0.0",
         "@types/bun": "^1.2.18",
         "@types/dagre": "^0.7.54",
@@ -200,6 +200,7 @@
       "dependencies": {
         "@openqueue/core": "workspace:*",
         "@openqueue/workbench": "workspace:*",
+        "@openqueue/world-bullmq": "workspace:*",
         "h3": "2.0.1-rc.25",
       },
       "devDependencies": {
@@ -208,6 +209,23 @@
         "tsup": "^8.5.0",
         "typescript": "^5.9.3",
         "vitest": "^4.0.18",
+      },
+    },
+    "packages/world-bullmq": {
+      "name": "@openqueue/world-bullmq",
+      "version": "0.1.4",
+      "dependencies": {
+        "@openqueue/core": "workspace:*",
+        "bullmq": "^5.71.1",
+        "ioredis": "^5.10.1",
+      },
+      "devDependencies": {
+        "@opentelemetry/api": "^1.9.0",
+        "@types/node": "^22.10.10",
+        "tsup": "^8.5.0",
+        "typescript": "^5.9.3",
+        "vitest": "^4.0.18",
+        "zod": "^4.1.13",
       },
     },
     "packages/world-postgres": {
@@ -503,6 +521,8 @@
     "@openqueue/workbench": ["@openqueue/workbench@workspace:packages/workbench"],
 
     "@openqueue/worker": ["@openqueue/worker@workspace:packages/worker"],
+
+    "@openqueue/world-bullmq": ["@openqueue/world-bullmq@workspace:packages/world-bullmq"],
 
     "@openqueue/world-postgres": ["@openqueue/world-postgres@workspace:packages/world-postgres"],
 

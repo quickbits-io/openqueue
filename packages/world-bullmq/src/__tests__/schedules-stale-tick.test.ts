@@ -1,13 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { scheduleQueueNameFor, scheduleTickJobName } from '@openqueue/core';
+import type { TransportJobHandle } from '@openqueue/core/world';
 import { Redis } from 'ioredis';
 import { afterAll, describe, expect, it } from 'vitest';
-import {
-  createQueueSchedulesWithTransport,
-  scheduleQueueNameFor,
-  scheduleTickJobName,
-} from '../schedules';
-import { createBullmqTransport } from '../transport/bullmq';
-import type { TransportJobHandle } from '../transport/types';
+// Source-relative: createQueueSchedulesWithTransport is the package-private
+// transport-agnostic scheduler (not a frozen export).
+import { createQueueSchedulesWithTransport } from '../../../core/src/schedules';
+import { createBullmqTransport } from '../transport';
 import { catalogEntry, memoryStorage } from './support/memory-storage';
 
 const url = process.env.REDIS_URL;

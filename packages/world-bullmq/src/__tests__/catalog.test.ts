@@ -1,7 +1,22 @@
+import {
+  createQueueClient,
+  task as defineTask,
+  taskCatalogEntry,
+} from '@openqueue/core';
+import type { TaskDefinition } from '@openqueue/core/types';
+import type { Redis } from 'ioredis';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { task } from '../task';
-import type { TaskDefinition } from '../types';
+// Source-relative: createEnqueuer is the package-private instance enqueue engine.
+import { createEnqueuer } from '../../../core/src/enqueuer';
+import {
+  publishQueueCatalog,
+  readQueueCatalog,
+  resolveQueueCatalogTask,
+} from '../catalog';
+import { createBullmqTransport } from '../transport';
+import { worldBullmq } from '../world';
+import { memoryStorage } from './support/memory-storage';
 
 const bullmq = vi.hoisted(() => {
   class QueueMock {
@@ -90,6 +105,10 @@ class RedisMock {
   async quit() {}
 }
 
+function redisMock(): Redis {
+  return new RedisMock() as unknown as Redis;
+}
+
 function job(
   input: Partial<TaskDefinition> & { name: string },
 ): TaskDefinition {
@@ -114,11 +133,9 @@ describe('queue catalog', () => {
   });
 
   it('publishes and reads catalog metadata', async () => {
-    const { publishQueueCatalog, readQueueCatalog, resolveQueueCatalogTask } =
-      await import('../catalog.js');
-    const redis = new RedisMock();
+    const redis = redisMock();
 
-    await publishQueueCatalog(redis as never, [
+    await publishQueueCatalog(redis, [
       job({
         name: 'process-document',
         queue: 'documents',
@@ -129,7 +146,7 @@ describe('queue catalog', () => {
       }),
     ]);
 
-    const [entry] = await readQueueCatalog(redis as never);
+    const [entry] = await readQueueCatalog(redis);
 
     expect(entry).toMatchObject({
       id: 'process-document',
@@ -141,96 +158,84 @@ describe('queue catalog', () => {
       tags: ['inbox'],
     });
     await expect(
-      resolveQueueCatalogTask(redis as never, 'process-document'),
+      resolveQueueCatalogTask(redis, 'process-document'),
     ).resolves.toMatchObject({ queue: 'documents' });
   });
 
   it('does not publish payload defaults in the catalog', async () => {
-    const { publishQueueCatalog, readQueueCatalog } = await import(
-      '../catalog.js'
-    );
-    const redis = new RedisMock();
+    const redis = redisMock();
 
-    await publishQueueCatalog(redis as never, [
-      task({
+    await publishQueueCatalog(redis, [
+      job({
         id: 'send-message',
-        schema: z.object({ message: z.string().default('Hello') }),
-        run: async () => undefined,
-      }) as unknown as TaskDefinition,
+        name: 'send-message',
+      }),
     ]);
 
-    const [entry] = await readQueueCatalog(redis as never);
+    const [entry] = await readQueueCatalog(redis);
     expect(entry).toMatchObject({ id: 'send-message' });
     expect(Object.hasOwn(entry!, 'sample')).toBe(false);
   });
 
   it('replaces catalog entries when metadata changes', async () => {
-    const { publishQueueCatalog, resolveQueueCatalogTask } = await import(
-      '../catalog.js'
-    );
-    const redis = new RedisMock();
+    const redis = redisMock();
 
-    await publishQueueCatalog(redis as never, [
+    await publishQueueCatalog(redis, [
       job({ name: 'sync-bank-account', queue: 'banking', attempts: 1 }),
     ]);
-    await publishQueueCatalog(redis as never, [
+    await publishQueueCatalog(redis, [
       job({ name: 'sync-bank-account', queue: 'banking', attempts: 5 }),
     ]);
 
     await expect(
-      resolveQueueCatalogTask(redis as never, 'sync-bank-account'),
+      resolveQueueCatalogTask(redis, 'sync-bank-account'),
     ).resolves.toMatchObject({ attempts: 5 });
   });
 
   it('keeps catalogs isolated by namespace on the same Redis', async () => {
-    const { publishQueueCatalog, readQueueCatalog, resolveQueueCatalogTask } =
-      await import('../catalog.js');
-    const redis = new RedisMock();
+    const redis = redisMock();
 
     await publishQueueCatalog(
-      redis as never,
+      redis,
       [job({ name: 'sync-bank-account', queue: 'banking' })],
       [],
       'app-a',
     );
     await publishQueueCatalog(
-      redis as never,
+      redis,
       [job({ name: 'sync-bank-account', queue: 'integrations' })],
       [],
       'app-b',
     );
 
+    await expect(readQueueCatalog(redis, 'app-a')).resolves.toMatchObject([
+      { queue: 'banking' },
+    ]);
+    await expect(readQueueCatalog(redis, 'app-b')).resolves.toMatchObject([
+      { queue: 'integrations' },
+    ]);
     await expect(
-      readQueueCatalog(redis as never, 'app-a'),
-    ).resolves.toMatchObject([{ queue: 'banking' }]);
-    await expect(
-      readQueueCatalog(redis as never, 'app-b'),
-    ).resolves.toMatchObject([{ queue: 'integrations' }]);
-    await expect(
-      resolveQueueCatalogTask(redis as never, 'sync-bank-account', 'app-a'),
+      resolveQueueCatalogTask(redis, 'sync-bank-account', 'app-a'),
     ).resolves.toMatchObject({ queue: 'banking' });
   });
 
   it('throws a clear error for unknown task ids', async () => {
-    const { resolveQueueCatalogTask } = await import('../catalog.js');
-
     await expect(
-      resolveQueueCatalogTask(new RedisMock() as never, 'missing-task'),
+      resolveQueueCatalogTask(redisMock(), 'missing-task'),
     ).rejects.toThrow(
       'Unknown task "missing-task"; worker catalog has not been published',
     );
   });
 
   it('producer client resolves task id routing from the catalog', async () => {
-    const { createQueueClient, publishQueueCatalog } = await import(
-      '../index.js'
-    );
-    const redis = new RedisMock();
-    await publishQueueCatalog(redis as never, [
+    const redis = redisMock();
+    await publishQueueCatalog(redis, [
       job({ name: 'process-document', queue: 'documents', attempts: 2 }),
     ]);
 
-    const client = createQueueClient({ redis: redis as never });
+    const client = await createQueueClient({
+      world: worldBullmq({ producer: redis }),
+    });
     const result = await client.trigger(
       'process-document',
       { documentId: 'doc-1' },
@@ -255,26 +260,32 @@ describe('queue catalog', () => {
   });
 
   it('enqueues schema-derived defaults and freeform input', async () => {
-    const { configureEnqueue, enqueue } = await import('../enqueue.js');
-    configureEnqueue({ redis: new RedisMock() as never });
+    const enqueuer = createEnqueuer({
+      transport: createBullmqTransport({ producer: redisMock() }),
+    });
 
-    const typed = task({
+    const typed = defineTask({
       id: 'typed',
+      queue: 'typed',
       schema: z.object({ message: z.string().default('Hello') }),
       run: async () => undefined,
     });
-    const freeform = task({
+    const freeform = defineTask({
       id: 'freeform',
       queue: 'system',
       run: async () => undefined,
     });
 
-    await enqueue(
+    await enqueuer.enqueue(
       typed as unknown as TaskDefinition<unknown, unknown>,
       {},
       { jobId: 'typed-run' },
     );
-    await enqueue(freeform, { anything: true }, { jobId: 'freeform-run' });
+    await enqueuer.enqueue(
+      freeform,
+      { anything: true },
+      { jobId: 'freeform-run' },
+    );
 
     const typedQueue = bullmq.QueueMock.instances.find(
       (item) => item.name === 'typed',
@@ -291,11 +302,10 @@ describe('queue catalog', () => {
     });
   });
 
-  it('producer client falls back to configured durable catalog stores', async () => {
-    const { createQueueClient, memoryQueueCatalogStore, taskCatalogEntry } =
-      await import('../index.js');
-    const redis = new RedisMock();
-    const store = memoryQueueCatalogStore([
+  it('producer client falls back to the durable storage catalog', async () => {
+    const redis = redisMock();
+    const storage = memoryStorage();
+    await storage.publish([
       taskCatalogEntry(
         job({
           name: 'export-transactions',
@@ -305,7 +315,9 @@ describe('queue catalog', () => {
       ),
     ]);
 
-    const client = createQueueClient({ redis: redis as never, catalog: store });
+    const client = await createQueueClient({
+      world: worldBullmq({ producer: redis, storage }),
+    });
     await client.trigger(
       'export-transactions',
       { accountId: 'acct-1' },

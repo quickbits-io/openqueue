@@ -1,6 +1,11 @@
+import type { QueueRunSnapshot, TaskDefinition } from '@openqueue/core/types';
+import type { Redis } from 'ioredis';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { QueueRunSnapshot, TaskDefinition } from '../types';
+// Source-relative: createEnqueuer is the package-private instance enqueue engine
+// (not a frozen export); the module-global `configureEnqueue` was removed at 1.0.
+import { createEnqueuer } from '../../../core/src/enqueuer';
+import { createBullmqTransport } from '../transport';
 
 const bullmq = vi.hoisted(() => {
   type FlowNode = {
@@ -70,7 +75,6 @@ function job<I>(input: {
 
 describe('enqueueFlow', () => {
   it('adds wrapped flow jobs with dependency options and enqueue hooks', async () => {
-    const { configureEnqueue, enqueueFlow } = await import('../enqueue.js');
     const parent = job({
       name: 'process-bank-transactions',
       queue: 'banking',
@@ -83,8 +87,8 @@ describe('enqueueFlow', () => {
     });
     const runs: QueueRunSnapshot[] = [];
 
-    configureEnqueue({
-      redis: {} as never,
+    const enqueuer = createEnqueuer({
+      transport: createBullmqTransport({ producer: {} as unknown as Redis }),
       drain: {
         handle: async (event) => {
           if (event.type === 'enqueue') runs.push(event.run);
@@ -92,7 +96,7 @@ describe('enqueueFlow', () => {
       },
     });
 
-    const result = await enqueueFlow({
+    const result = await enqueuer.enqueueFlow({
       def: parent,
       input: { tenantId: 'tenant-1' },
       opts: {
@@ -155,7 +159,7 @@ describe('enqueueFlow', () => {
     ]);
 
     await expect(
-      enqueueFlow({
+      enqueuer.enqueueFlow({
         def: parent,
         input: { tenantId: 1 },
         opts: { jobId: 'invalid-input' },
@@ -163,7 +167,7 @@ describe('enqueueFlow', () => {
       }),
     ).rejects.toThrow();
     await expect(
-      enqueueFlow({
+      enqueuer.enqueueFlow({
         def: parent,
         input: { tenantId: 'tenant-1' },
         opts: { jobId: 'invalid:job' },

@@ -1,11 +1,4 @@
-import type { Redis } from 'ioredis';
-import {
-  DEFAULT_NAMESPACE,
-  type NamespaceOptions,
-  redisKey,
-  resolveNamespace,
-} from './namespace';
-import { filterRuns, filterSchedules, runFromSnapshot } from './store/filter';
+import { DEFAULT_NAMESPACE } from '@openqueue/core';
 import type {
   AlertContactPoint,
   AlertRule,
@@ -19,7 +12,17 @@ import type {
   QueueState,
   QueueStorage,
   SerializedError,
-} from './types';
+} from '@openqueue/core/types';
+import {
+  filterRuns,
+  filterSchedules,
+  runFromSnapshot,
+} from '@openqueue/core/world';
+import type { Redis } from 'ioredis';
+
+export function redisKey(namespace: string, key: string): string {
+  return `${namespace}:queue:${key}:v1`;
+}
 
 interface RedisStateKeys {
   schedules: string;
@@ -50,10 +53,9 @@ function redisStateKeys(namespace: string): RedisStateKeys {
 export function createRedisQueueState(
   redis: Redis,
   durable?: QueueStorage,
-  options: NamespaceOptions = {},
+  namespace: string = DEFAULT_NAMESPACE,
 ): QueueState {
-  const namespace = resolveNamespace(options);
-  const keys = redisStateKeys(namespace.namespace);
+  const keys = redisStateKeys(namespace);
   return {
     name: 'redis-state',
     schedules: redisScheduleStore(redis, durable?.schedules, keys),
