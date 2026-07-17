@@ -48,7 +48,6 @@ export interface EnqueueOptions {
   priority?: number;
   attempts?: number;
   backoff?: BackoffOptions | number;
-  ttl?: number;
   failParentOnFailure?: boolean;
   continueParentOnFailure?: boolean;
   ignoreDependencyOnFailure?: boolean;
@@ -56,10 +55,8 @@ export interface EnqueueOptions {
 }
 
 export interface EnqueueResult {
-  id: string;
   runId: string;
   jobId: string;
-  transportJobId: string;
 }
 
 export interface QueueRun {
@@ -157,7 +154,6 @@ export interface QueueCatalogEntry {
   attempts: number;
   backoff: BackoffOptions;
   concurrency: number;
-  ttl?: number;
   maxStalledCount?: number;
   cron?: string;
   tags: string[];

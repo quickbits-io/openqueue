@@ -126,7 +126,7 @@ describe('createClient auth', () => {
 
 describe('createClient trigger', () => {
   it('triggers a task by id with the enqueue body shape', async () => {
-    const result = { id: 'r1', runId: 'r1', jobId: 'j1', transportJobId: 'j1' };
+    const result = { runId: 'r1', jobId: 'j1' };
     const { fetch, calls } = stubFetch(() => jsonResponse(result, 201));
     const client = createClient({ host: 'http://x', fetch });
 
@@ -145,7 +145,7 @@ describe('createClient trigger', () => {
   });
 
   it('parses input locally when triggering a TaskRef with a schema', async () => {
-    const result = { id: 'r1', runId: 'r1', jobId: 'j1', transportJobId: 'j1' };
+    const result = { runId: 'r1', jobId: 'j1' };
     const { fetch, calls } = stubFetch(() => jsonResponse(result, 201));
     const client = createClient({ host: 'http://x', fetch });
     const parse = vi.fn((_input: unknown): unknown => ({ clean: true }));

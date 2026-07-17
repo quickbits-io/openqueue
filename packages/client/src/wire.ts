@@ -94,7 +94,6 @@ export const enqueueOptionsSchema = z.object({
   priority: z.number().int().optional(),
   attempts: z.number().int().positive().optional(),
   backoff: z.union([backoffSchema, z.number()]).optional(),
-  ttl: z.number().int().positive().optional(),
   meta: enqueueMetaSchema.optional(),
 });
 export type WireEnqueueOptions = z.infer<typeof enqueueOptionsSchema>;
@@ -107,10 +106,8 @@ export const enqueueRequestSchema = z.object({
 export type WireEnqueueRequest = z.infer<typeof enqueueRequestSchema>;
 
 export const enqueueResultSchema = z.object({
-  id: z.string(),
   runId: z.string(),
   jobId: z.string(),
-  transportJobId: z.string(),
 });
 export type WireEnqueueResult = z.infer<typeof enqueueResultSchema>;
 
@@ -173,7 +170,6 @@ export const wireCatalogEntrySchema = z.object({
   attempts: z.number(),
   backoff: backoffSchema,
   concurrency: z.number(),
-  ttl: z.number().optional(),
   maxStalledCount: z.number().optional(),
   cron: z.string().optional(),
   tags: z.array(z.string()),
@@ -195,7 +191,7 @@ export const cancelRunResponseSchema = z.discriminatedUnion('outcome', [
   z.object({
     outcome: z.literal('not_cancelable'),
     run: wireRunSchema,
-    reason: z.literal('executing'),
+    reason: z.string(),
   }),
 ]);
 export type WireCancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
@@ -217,9 +213,11 @@ export type WireErrorCode =
   | 'unauthorized'
   | 'forbidden'
   | 'invalid_request'
+  | 'not_found'
   | 'task_not_found'
   | 'run_not_found'
   | 'schedule_not_found'
+  | 'unsupported_capability'
   | 'internal';
 
 export const errorResponseSchema = z.object({

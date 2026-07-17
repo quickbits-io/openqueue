@@ -331,7 +331,6 @@ function toWireOptions(
     priority: opts.priority,
     attempts: opts.attempts,
     backoff: opts.backoff,
-    ttl: opts.ttl,
     meta: opts.meta,
   };
 }
