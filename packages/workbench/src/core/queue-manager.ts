@@ -7,7 +7,7 @@ import {
   type JobType,
   type Queue,
 } from 'bullmq';
-import { parseExpression } from 'cron-parser';
+import cronParser from 'cron-parser';
 import { LRUCache } from 'lru-cache';
 import { isRecord } from '../util';
 import type {
@@ -125,7 +125,7 @@ function upcomingRuns(
   if (scheduler.pattern) {
     try {
       const tz = scheduler.tz ?? undefined;
-      const iterator = parseExpression(scheduler.pattern, {
+      const iterator = cronParser.parseExpression(scheduler.pattern, {
         currentDate: new Date(),
         tz: tz === 'UTC' ? undefined : tz,
         utc: tz === 'UTC' || tz === undefined,
