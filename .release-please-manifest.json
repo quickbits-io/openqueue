@@ -1,7 +1,9 @@
 {
   "packages/cli": "0.1.4",
+  "packages/client": "0.1.4",
   "packages/core": "0.1.4",
   "packages/openqueue": "0.1.4",
   "packages/workbench": "0.1.4",
-  "packages/worker": "0.1.4"
+  "packages/worker": "0.1.4",
+  "packages/world-postgres": "0.1.4"
 }

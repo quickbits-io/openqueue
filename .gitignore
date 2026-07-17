@@ -44,3 +44,8 @@ yarn-error.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# local research clones + tool indexes
+.context/
+.codegraph/
+.cursor/

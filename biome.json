@@ -11,6 +11,7 @@
       "packages/**/*.tsx",
       "examples/**/*.ts",
       "examples/**/*.tsx",
+      "e2e/**/*.ts",
       "!**/node_modules",
       "!**/dist",
       "!**/.turbo",

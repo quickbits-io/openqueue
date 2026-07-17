@@ -20,13 +20,20 @@
   "workspaces": [
     "packages/*",
     "site",
-    "examples/*"
+    "examples/*",
+    "e2e"
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "check:control": "bun scripts/check-control-clean.ts",
+    "check:world": "bun scripts/check-world-clean.ts",
+    "check:world-postgres": "bun scripts/check-world-postgres-clean.ts",
+    "e2e": "docker compose up --wait && turbo run test:transport e2e",
+    "e2e:pg": "docker compose up postgres --wait && E2E_WORLD=postgres REDIS_URL=redis://127.0.0.1:9 turbo run test:transport e2e --filter=@openqueue/world-postgres --filter=@openqueue/e2e --concurrency=1",
+    "e2e:split": "docker compose up postgres --wait && E2E_WORLD=postgres REDIS_URL=redis://127.0.0.1:9 turbo run e2e:split --filter=@openqueue/e2e --concurrency=1",
     "lint": "biome check .",
     "format": "biome format --write .",
     "clean": "turbo run clean && rm -rf node_modules",
