@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { Job, Queue } from 'bullmq';
+import { describe, expect, test } from 'vitest';
 import { QueueManager } from './queue-manager';
 
 function job(input: {

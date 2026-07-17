@@ -1,7 +1,7 @@
 {
   "name": "@openqueue/workbench",
   "version": "0.1.4",
-  "description": "OpenQueue Workbench — an embeddable dashboard (queues, runs, schedules, flows, metrics, alerts) for BullMQ / OpenQueue, with Hono and Next.js adapters.",
+  "description": "OpenQueue Workbench — an embeddable dashboard (queues, runs, schedules, flows, metrics, alerts) for BullMQ / OpenQueue, with h3 and Next.js adapters.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/workbench#readme",
@@ -20,7 +20,7 @@
     "bullmq",
     "queue",
     "ui",
-    "hono",
+    "h3",
     "next"
   ],
   "sideEffects": [
@@ -35,10 +35,15 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./hono": {
-      "types": "./dist/hono.d.ts",
-      "import": "./dist/hono.js",
-      "default": "./dist/hono.js"
+    "./control": {
+      "types": "./dist/control.d.ts",
+      "import": "./dist/control.js",
+      "default": "./dist/control.js"
+    },
+    "./h3": {
+      "types": "./dist/h3.d.ts",
+      "import": "./dist/h3.js",
+      "default": "./dist/h3.js"
     },
     "./next": {
       "types": "./dist/next.d.ts",
@@ -56,7 +61,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.11.1"
   },
   "publishConfig": {
     "access": "public"
@@ -66,15 +71,15 @@
     "clean": "rm -rf .turbo node_modules dist",
     "lint": "biome check .",
     "format": "biome format --write .",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "dev": "vite",
     "dev:ui": "vite",
     "preview": "vite --host 0.0.0.0"
   },
   "dependencies": {
-    "@hono/zod-openapi": "^1.4.0",
+    "@openqueue/client": "workspace:*",
     "@openqueue/core": "workspace:*",
-    "@scalar/hono-api-reference": "^0.11.3",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-collapsible": "^1.1.12",
@@ -99,7 +104,7 @@
     "dagre": "^0.8.5",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.38.0",
-    "hono": "^4.11.9",
+    "h3": "2.0.1-rc.25",
     "ioredis": "^5.10.1",
     "lru-cache": "^11.2.7",
     "lucide-react": "^0.555.0",
@@ -121,6 +126,7 @@
     "tailwindcss": "^4.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^4.0.18"
   }
 }

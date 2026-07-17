@@ -18,7 +18,7 @@ bun add @openqueue/workbench
 | Entry | Use |
 | --- | --- |
 | `@openqueue/workbench` | Core (`WorkbenchCore`, `QueueManager`, `createFetchHandler`, route helpers). |
-| `@openqueue/workbench/hono` | `buildWorkbenchApp` / `createWorkbenchApp` — a ready-to-mount Hono app. |
+| `@openqueue/workbench/h3` | `buildWorkbenchApp` / `createWorkbenchApp` — a ready-to-mount h3 app. |
 | `@openqueue/workbench/next` | `workbench()` — Next.js App Router catch-all route handlers. |
 
 ```ts

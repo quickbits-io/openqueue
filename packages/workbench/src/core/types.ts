@@ -1,4 +1,5 @@
 import type {
+  AuthStrategy,
   QueueRunSpan,
   QueueSchedule,
   QueueScheduleListOptions,
@@ -141,11 +142,9 @@ export interface WorkbenchOptions {
   queues?: Queue[];
   /** Redis connection for auto-discovery of queues */
   redis?: string | RedisOptions;
-  /** Basic auth credentials */
-  auth?: {
-    username: string;
-    password: string;
-  };
+  /** Basic auth credentials (sugar for `[httpBasic(...)]`) or an ordered
+   *  {@link AuthStrategy} walk. Unset = dashboard open (existing behavior). */
+  auth?: { username: string; password: string } | AuthStrategy[];
   /** Dashboard title */
   title?: string;
   /** Logo URL */
@@ -271,7 +270,7 @@ export interface AlertsOptions {
   /** Override the config store entirely */
   store?: AlertStore;
   /** Where to persist dashboard-managed config. Default: `"redis"` when a connection exists */
-  persistence?: 'redis' | 'memory' | 'postgres';
+  persistence?: AlertPersistence;
   /** Redis key prefix for stored config. Default: Workbench `prefix` or `"bull"` */
   storagePrefix?: string;
   defaults?: {

@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { Queue } from 'bullmq';
+import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { buildRouteTable } from '../api/handlers';
 import { QueueManager } from './queue-manager';
