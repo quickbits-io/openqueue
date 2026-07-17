@@ -79,8 +79,8 @@ await exampleTask.trigger({ message: 'deploy finished' });
 ```
 
 `trigger` validates the payload against the schema, enqueues the job, and
-returns an `EnqueueResult` with the job id. Options let you delay or
-deduplicate:
+returns an `EnqueueResult` — `{ runId, jobId }`, where `runId` is the durable
+handle you inspect run status with. Options let you delay or deduplicate:
 
 ```ts
 await exampleTask.trigger(payload, { delay: 60_000 });

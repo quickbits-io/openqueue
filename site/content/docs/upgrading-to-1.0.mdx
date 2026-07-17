@@ -1,0 +1,182 @@
+---
+title: Upgrading to 1.0
+description: What changed at the first major — and why most apps need no code changes.
+---
+
+OpenQueue 1.0 freezes the public surface. It also splits the BullMQ engine out of
+`@openqueue/core` so the core runtime is transport-neutral, and it lifts the Node
+floor to match h3 v2. This guide covers every change, but leads with the part
+that matters most: **the common path is unchanged.**
+
+## Requirements
+
+- **Node `>= 20.11.1` or Bun `>= 1.2`** for the Node-capable packages
+  (`@openqueue/core`, `@openqueue/sdk`, `@openqueue/client`,
+  `@openqueue/workbench`, `@openqueue/world-bullmq`, `@openqueue/world-postgres`).
+  20.11.1 is the floor because h3 v2 requires it; 22+ is recommended. Node 18 and
+  20-before-20.11 are both past end-of-life.
+- `@openqueue/worker` and `@openqueue/cli` remain **Bun-only** (`bun >= 1.2`).
+- All `@openqueue/*` packages release in **lockstep** — every one jumps from
+  `0.1.x` to `1.0.0` together.
+
+## The 90% path is unchanged
+
+If your app is a `worker.config.ts` with the `redis` sugar and tasks discovered
+from a directory, **nothing changes.** This config compiles and runs identically
+on 1.0:
+
+```ts title="worker.config.ts"
+import { defineConfig } from '@openqueue/sdk';
+
+export default defineConfig({
+  namespace: 'my-app',
+  dirs: ['./worker'],
+  redis: { url: process.env.REDIS_URL! },
+});
+```
+
+`task()`, `task.trigger()`, `task.schedules.*`, `enqueueFlow()`, the error
+taxonomy, `postgresAdapter`, drains, and the `openqueue dev | build | start`
+commands are all unchanged. The `redis: { url }` block is now sugar that
+`@openqueue/worker` resolves to a BullMQ world for you — you don't install or
+import anything new for it.
+
+Bump your engines to Node 20.11.1 / Bun 1.2, update to `1.0.0`, and you're done.
+The rest of this page is for apps that reached below the config surface.
+
+## New packages
+
+The BullMQ transport used to live inside `@openqueue/core`. At 1.0 it moves into
+its own package so core carries no `bullmq`/`ioredis` and can run on the edge.
+
+| Package | What it is |
+| --- | --- |
+| `@openqueue/world-bullmq` | The default delivery path — a Redis/BullMQ transport paired with a write-through durable store. The `redis` config sugar resolves to this; `@openqueue/worker` depends on it so you never install it directly for the common path. |
+| `@openqueue/world-postgres` | A self-migrating Postgres world — a `SELECT … FOR UPDATE SKIP LOCKED` transport plus a Drizzle-backed store, with **zero Redis**. One database powers both jobs and history. |
+| `@openqueue/client` | A fetch-only HTTP client for a deployed worker. Zero Redis/DB — safe in Node, Bun, and edge runtimes. Re-exported as `@openqueue/sdk/client`. |
+
+`@openqueue/sdk` deliberately does **not** re-export `world-bullmq` — keeping
+light installs light is the point of the split. The worker and CLI carry the
+default path.
+
+## Removed core APIs
+
+These low-level exports left `@openqueue/core`. You almost certainly never called
+them directly — the config-driven path and `task()`/`trigger()` never touched
+them. If you did wire a runtime by hand, here are the replacements:
+
+| Removed | Replacement |
+| --- | --- |
+| `configureEnqueue` | `createClient({ host })` from `@openqueue/client` (recommended, connection-free), or `createQueueClient({ world })` for an in-process runtime. |
+| `createConnection`, `closeConnection`, `QueueConnection` | The world owns its connections. `worldBullmq({ url })` opens and closes them; pass your own `producer`/`consumer` to keep ownership. |
+| `createQueue`, `defaultJobOptions`, `queue` | The transport owns queues. Reach them via `worldBullmq` or `isBullmqTransport(runtime.transport)`. |
+| `createWorker`, `CreateWorkerOptions` | `createQueueWorker({ world, tasks })`, or just run `@openqueue/worker`. |
+| `createQueueSchedules` | Schedules come off the runtime: `runtime.schedules` / `client.schedules`. |
+| `publishQueueCatalog`, `readQueueCatalog`, `queueCatalogKey`, `queueCatalogPublishedAtKey` | The Redis catalog format is now private to `world-bullmq`. Read the catalog via `client.catalog` / `runtime.catalog`. |
+| `bullPrefix`, `DEFAULT_BULL_PREFIX`, `redisKey` | BullMQ key details live in the world: `worldBullmq({ prefix })` (absorbs the old `bullPrefix`). |
+
+`createQueueClient` and `createQueueWorker` now take a `world` (a `WorldFactory`)
+instead of a `redis` connection, and are **async** because a world factory may be
+async:
+
+```ts
+// before (0.1.x)
+const client = createQueueClient({ redis: { url } });
+
+// after (1.0) — in-process
+import { worldBullmq } from '@openqueue/world-bullmq';
+const client = await createQueueClient({ world: worldBullmq({ url }) });
+
+// after (1.0) — connection-free (recommended for app code)
+import { createClient } from '@openqueue/client';
+const client = createClient({ host: 'https://worker.example.com' });
+```
+
+## Type changes
+
+- **`EnqueueResult` is `{ runId, jobId }`.** The duplicated `id` and
+  `transportJobId` fields are gone. `runId` is the durable inspect handle;
+  `jobId` is the transport handle. (`QueueRun.transportJobId` stays.)
+- **`ttl` is removed** from `EnqueueOptions` and task definitions. It was a silent
+  no-op on every transport — a typed feature that did nothing. Use a task
+  `timeout` for run-duration limits.
+- **`storage` is flattened.** `storage: { adapter: postgresAdapter(...) }` becomes
+  `storage: postgresAdapter(...)`.
+- **`QueueConfig` collapsed into `OpenQueueConfig`.** The alias is gone; import
+  `OpenQueueConfig`.
+- **`WorkerConfig`, `TelemetryConfig`, and `defineWorkerConfig` are removed.**
+  This was dead scaffolding — OpenTelemetry is wired through the process's own
+  tracer provider and the `@opentelemetry/*` peer deps, not a config block.
+- **`WorldContext` is flattened** to `{ namespace: string }` (no more
+  `ctx.namespace.namespace`) — relevant only if you author a world.
+
+## Workbench
+
+- **`@openqueue/workbench/hono` is now `@openqueue/workbench/h3`.** The adapter
+  moved from Hono to h3. Update the import and hand it an `H3` app instead of a
+  Hono one; the dashboard, routes, and auth are otherwise identical.
+- **Node floor is 20.11.1** (h3 v2's minimum). This is the one package whose floor
+  moved specifically for h3.
+- **Dependencies dropped:** `hono`, `@hono/zod-openapi`, and
+  `@scalar/hono-api-reference` are gone. OpenAPI is now generated framework-free
+  from the route table via zod's `z.toJSONSchema`.
+- **`workbench.auth`** accepts basic credentials *or* an ordered
+  [`AuthStrategy`](/docs/upgrading-to-1.0#new-surfaces) walk. The old
+  `{ username, password }` shape still works (it's sugar for `[httpBasic(...)]`).
+- **Runs page on non-BullMQ worlds.** The dashboard's Runs page reads BullMQ
+  directly, so on a `world-postgres` (or any non-BullMQ world) it renders empty —
+  run history for those worlds lives on the control API (`/openqueue/v1`) and the
+  client, not the dashboard. The worker logs a one-line pointer at boot. See
+  [Workbench → On non-BullMQ worlds](/docs/workbench#on-non-bullmq-worlds).
+
+## Security behavior changes
+
+- **jose upgraded to v6.** No API change on our surface; it drops the Node 18
+  support we no longer need.
+- **Trusted-issuer JWTs with a configured `tenantClaim` now fail closed.** If a
+  strategy is configured to scope by a tenant claim and the token doesn't carry a
+  string claim, the request is rejected (401) rather than granted cross-tenant
+  access. Deployments that relied on claim-less tokens passing will now see 401s —
+  this is intended.
+- **The `/openqueue/v1` control API is fail-closed in production.** When neither
+  `api.token` nor `api.auth` is set, the API is open in development and returns
+  401 when `NODE_ENV=production`. An empty `api.auth: []` always 401s.
+- **Wire envelopes tightened:** unknown control-API routes return a `404`
+  `not_found` envelope, and an unsupported transport capability (e.g. flows on a
+  Postgres world) returns `501 unsupported_capability` instead of a generic error.
+
+## New surfaces
+
+1.0 also freezes several surfaces that landed during the umbrella program:
+
+- **`@openqueue/core/auth`** — the `AuthStrategy` ordered walk plus shipped
+  strategies (`apiKey`, `httpBasic`, `jwtHmac`, `oidc`, `localDev`, `none`). Used
+  by `api.auth` and `workbench.auth`.
+- **`@openqueue/core/control`** — `createControlRuntime`, a producer/observer
+  runtime over a world with no consumers, for the edge/serverless
+  [two-plane](/docs/two-plane) topology. Import-clean of ioredis/bullmq.
+- **`@openqueue/core/world`** — the world contract (`OpenQueueWorld`,
+  `QueueTransport`, `WorldFactory`, `WORLD_SPEC_VERSION`) and store-author helpers
+  (`filterRuns`, `filterSchedules`, `runFromSnapshot`). See [Worlds](/docs/worlds).
+- **`@openqueue/workbench/control`** — `buildControlApp`, the h3 control-API app.
+- **`@openqueue/client`** / **`@openqueue/sdk/client`** — the connection-free HTTP
+  client and the `/openqueue/v1` wire contract.
+- **The `/openqueue/v1` control API** — mounted by the worker unconditionally.
+
+## What the semver guarantee covers
+
+Frozen at 1.0 (breaking changes to these ship only in 2.0):
+
+- `@openqueue/sdk` / `@openqueue/core` index and subpaths
+  (`./auth`, `./control`, `./drizzle`, `./types`, `./world`).
+- `@openqueue/client` (`.` and `./wire`) and the `/openqueue/v1` wire contract.
+- The world contract at `WORLD_SPEC_VERSION = 1`.
+- `OpenQueueConfig`.
+- The CLI commands.
+- `@openqueue/workbench` package exports.
+
+**Not** frozen: the Workbench dashboard internals (the React app and its private
+routes evolve freely). h3 stays pinned to its release-candidate line until a
+stable h3 v2 ships — that unpin is a 1.0.x follow-up, not a breaking change.
+
+After 1.0, any `feat!` (breaking) commit computes the next major.

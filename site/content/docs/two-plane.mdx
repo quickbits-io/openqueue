@@ -19,10 +19,10 @@ consumers pick it up. Both agree on a `namespace`.
 
 ## The control runtime
 
-`createControlRuntime` composes a world into `{ trigger, runs, schedules,
-catalog, close }` — the same producer/observer surface a worker exposes, minus
-consumers. It lives on the import-clean `@openqueue/core/control` subpath, whose
-bundle graph carries no ioredis or bullmq.
+`createControlRuntime` composes a [world](/docs/worlds) into `{ trigger, runs,
+schedules, catalog, close }` — the same producer/observer surface a worker
+exposes, minus consumers. It lives on the import-clean `@openqueue/core/control`
+subpath, whose bundle graph carries no ioredis or bullmq.
 
 ```ts
 import { createControlRuntime } from '@openqueue/core/control';

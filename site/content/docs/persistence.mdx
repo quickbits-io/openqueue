@@ -4,10 +4,41 @@ description: Postgres-backed run history, schedules, and alerts with Drizzle.
 ---
 
 Redis holds live queue state, and BullMQ's retention is bounded — completed
-jobs age out, and a `FLUSHALL` takes your history with it. The Postgres
-adapter gives OpenQueue a durable side: run history with full payloads and
+jobs age out, and a `FLUSHALL` takes your history with it. Durable Postgres
+storage gives OpenQueue a paper trail: run history with full payloads and
 event timelines, dynamic schedules that survive restarts, and alert
 configuration. Workbench reads all of it when present.
+
+## Two ways to reach Postgres
+
+Postgres is a [store](/docs/worlds) — the durable-state axis. You reach it two
+ways, and the choice is about who owns the schema:
+
+- **`postgresAdapter` (this page).** You bring your own Drizzle `db` and run the
+  migrations yourself with drizzle-kit. It composes *alongside* a transport —
+  typically the `redis` sugar (BullMQ delivers, Postgres persists). This is the
+  power-user path: OpenQueue's tables live in your database, on your migration
+  history, sharing your connection pool. The [demo](https://github.com/quickbits-io/openqueue/blob/main/examples/basic/worker.config.ts)
+  spells the composition out — `worldBullmq({ url, storage: postgresAdapter({ db, schema }) })`.
+
+- **`worldPostgres` ([Worlds](/docs/worlds)).** A self-migrating, **zero-Redis**
+  world: one Postgres connection runs the queue *and* stores history, and the
+  world owns its own schema — it applies its versioned migrations on
+  `world.start()` under an advisory lock, so you never run drizzle-kit. Use it
+  when you want a single-dependency deploy.
+
+  ```ts title="worker.config.ts"
+  import { defineConfig } from '@openqueue/sdk';
+  import { worldPostgres } from '@openqueue/world-postgres';
+
+  export default defineConfig({
+    namespace: 'my-app',
+    dirs: ['./worker'],
+    world: worldPostgres({ url: process.env.DATABASE_URL!, migrations: 'auto' }),
+  });
+  ```
+
+The rest of this page covers the `postgresAdapter` path in detail.
 
 ## Quick setup
 

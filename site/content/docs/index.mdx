@@ -45,8 +45,11 @@ await sendWelcome.trigger({ email: 'alex@example.com' });
 | --- | --- |
 | `@openqueue/sdk` | The main entry — `task()`, `defineConfig()`, `enqueueFlow()`, errors, adapters. |
 | `@openqueue/core` | The underlying runtime (re-exported by the main package). |
+| `@openqueue/client` | Fetch-only HTTP client for a deployed worker — trigger and inspect jobs with zero Redis/DB (also `@openqueue/sdk/client`). |
 | `@openqueue/worker` | The worker app — loads your config, runs tasks, serves Workbench. |
 | `@openqueue/workbench` | The dashboard — standalone or mountable into any fetch-native host (h3, Hono, Elysia) / Next.js. |
+| `@openqueue/world-bullmq` | The default delivery [world](/docs/worlds) — BullMQ over Redis. The `redis` config sugar resolves to it. |
+| `@openqueue/world-postgres` | A self-migrating Postgres [world](/docs/worlds) — one database for jobs and history, no Redis. |
 | `@openqueue/cli` | The `openqueue` CLI — `init`, `dev`, `build`, `start`. |
 
 ## How it fits together

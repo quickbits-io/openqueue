@@ -21,9 +21,7 @@ export default defineConfig({
     brokers: process.env.KAFKA_BROKERS!.split(','),
     groupId: 'my-app-workers',
   }),
-  storage: {
-    adapter: postgresAdapter({ db, schema: queueSchema }),
-  },
+  storage: postgresAdapter({ db, schema: queueSchema }),
 });
 ```
 
@@ -501,9 +499,7 @@ export default defineConfig({
     url: process.env.RABBITMQ_URL!,
     exchange: 'openqueue',
   }),
-  storage: {
-    adapter: postgresAdapter({ db, schema: queueSchema }),
-  },
+  storage: postgresAdapter({ db, schema: queueSchema }),
 });
 ```
 

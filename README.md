@@ -58,7 +58,9 @@ bunx openqueue dev
 ```
 
 See the [full quickstart](./site/content/docs/quickstart.mdx) and the rest of
-the docs under [`site/content/docs`](./site/content/docs).
+the docs under [`site/content/docs`](./site/content/docs). Upgrading from 0.1.x?
+Read [Upgrading to 1.0](./site/content/docs/upgrading-to-1.0.mdx) — most apps need
+no code changes.
 
 ## Packages
 
@@ -66,13 +68,18 @@ the docs under [`site/content/docs`](./site/content/docs).
 | --- | --- |
 | [`@openqueue/sdk`](./packages/openqueue) | The main entry — `task()`, `defineConfig()`, `enqueueFlow()`, errors, adapters. |
 | [`@openqueue/core`](./packages/core) | The underlying runtime (re-exported by `@openqueue/sdk`). |
+| [`@openqueue/client`](./packages/client) | Fetch-only HTTP client for a deployed worker — zero Redis/DB (also `@openqueue/sdk/client`). |
 | [`@openqueue/worker`](./packages/worker) | The worker app — loads your config, runs tasks, serves Workbench. |
-| [`@openqueue/workbench`](./packages/workbench) | The dashboard — standalone or mountable into Hono / Next.js. |
+| [`@openqueue/workbench`](./packages/workbench) | The dashboard — standalone or mountable into any fetch-native host (h3 / Next.js). |
+| [`@openqueue/world-bullmq`](./packages/world-bullmq) | The default delivery world — BullMQ over Redis. The `redis` config sugar resolves to it. |
+| [`@openqueue/world-postgres`](./packages/world-postgres) | A self-migrating Postgres world — one database for jobs and history, no Redis. |
 | [`@openqueue/cli`](./packages/cli) | The `openqueue` CLI — `init`, `dev`, `build`, `start`. |
 
-> **Runtime note:** `@openqueue/core`, `@openqueue/sdk`, and `@openqueue/workbench`
-> run on Node 18+ or Bun. `@openqueue/worker` and `@openqueue/cli` are
-> **Bun-native** (they use Bun's bundler, process, and HTTP server APIs).
+> **Runtime note:** the Node-capable packages (`@openqueue/core`, `@openqueue/sdk`,
+> `@openqueue/client`, `@openqueue/workbench`, `@openqueue/world-bullmq`,
+> `@openqueue/world-postgres`) run on **Node 20.11.1+** or Bun. `@openqueue/worker`
+> and `@openqueue/cli` are **Bun-native** (they use Bun's bundler, process, and
+> HTTP server APIs).
 
 ## Repository layout
 
@@ -81,14 +88,17 @@ This is a [Bun](https://bun.sh) workspace orchestrated with
 
 ```
 packages/
-  core/        @openqueue/core      — runtime engine
-  openqueue/   @openqueue/sdk       — public SDK (flagship package)
-  worker/      @openqueue/worker    — worker runtime
-  cli/         @openqueue/cli       — the `openqueue` binary
-  workbench/   @openqueue/workbench — dashboard UI + server adapters
-site/          docs & marketing site (Next.js + Fumadocs)
+  core/            @openqueue/core           — runtime engine
+  openqueue/       @openqueue/sdk            — public SDK (flagship package)
+  client/          @openqueue/client         — fetch-only HTTP client
+  worker/          @openqueue/worker         — worker runtime
+  cli/             @openqueue/cli            — the `openqueue` binary
+  workbench/       @openqueue/workbench      — dashboard UI + server adapters
+  world-bullmq/    @openqueue/world-bullmq   — BullMQ/Redis delivery world
+  world-postgres/  @openqueue/world-postgres — self-migrating Postgres world
+site/              docs & marketing site (Next.js + Fumadocs)
 examples/
-  basic/       a minimal worker you can run end to end
+  basic/           a minimal worker you can run end to end
 ```
 
 ### Common commands
@@ -104,8 +114,9 @@ bun run lint       # biome
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). In short: open a PR, and run
-`bun run changeset` to describe any change that should ship a release.
+See [CONTRIBUTING.md](./CONTRIBUTING.md). In short: open a PR with
+[Conventional Commits](https://www.conventionalcommits.org) — release-please reads
+them to version and publish the `@openqueue/*` packages in lockstep.
 
 ## License
 
