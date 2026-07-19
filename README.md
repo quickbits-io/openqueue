@@ -59,7 +59,7 @@ bunx openqueue dev
 
 See the [full quickstart](./site/content/docs/quickstart.mdx) and the rest of
 the docs under [`site/content/docs`](./site/content/docs). Upgrading from 0.1.x?
-Read [Upgrading to 1.0](./site/content/docs/upgrading-to-1.0.mdx) — most apps need
+Read [MIGRATION.md](./MIGRATION.md) (or the full [Upgrading to 1.0](./site/content/docs/upgrading-to-1.0.mdx) guide) — most apps need
 no code changes.
 
 ## Packages
