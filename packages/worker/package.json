@@ -1,7 +1,7 @@
 {
   "name": "@openqueue/worker",
   "version": "0.1.4",
-  "description": "OpenQueue worker runtime — runs your tasks, schedules, and flows, and serves the workbench. Bun-native.",
+  "description": "OpenQueue worker runtime — runs your tasks, schedules, and flows, and serves the workbench.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/worker#readme",
@@ -36,6 +36,7 @@
     "dist"
   ],
   "engines": {
+    "node": ">=20.11.1",
     "bun": ">=1.2.0"
   },
   "publishConfig": {

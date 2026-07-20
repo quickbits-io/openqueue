@@ -6,7 +6,7 @@ import {
   worldLocal,
 } from '@openqueue/core';
 import { isBullmqTransport } from '@openqueue/world-bullmq';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createWorkbenchForRuntime, startWorkerApp } from './index';
 
 function config(basePath: string): OpenQueueConfig {
@@ -75,21 +75,7 @@ describe('validateConfig accepts a world-only config', () => {
     run: async () => undefined,
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('boots worldLocal with no BullMQ queues and no external services', async () => {
-    let stopped = false;
-    vi.stubGlobal('Bun', {
-      serve: (options: { port?: number }) => ({
-        port: options.port ?? 0,
-        stop: () => {
-          stopped = true;
-        },
-      }),
-    });
-
     const app = await startWorkerApp(
       {
         namespace: 'world-only',
@@ -102,7 +88,6 @@ describe('validateConfig accepts a world-only config', () => {
     expect(isBullmqTransport(app.runtime.transport)).toBe(false);
 
     await app.close();
-    expect(stopped).toBe(true);
   });
 });
 
