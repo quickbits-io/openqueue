@@ -2,7 +2,11 @@ import type { AuthChallenge, Principal } from '@openqueue/core';
 import { H3, type H3Event } from 'h3';
 import { decodeParams } from '../decode-params';
 import type { HandlerInput, RouteDef } from '../handlers';
-import { authorizeControlRequest, resolveControlAuth } from './auth';
+import {
+  authorizeControlRequest,
+  type ControlEnv,
+  resolveControlAuth,
+} from './auth';
 import { buildControlRouteTable, type ControlApiOptions } from './routes';
 import { controlError } from './serialize';
 
@@ -24,7 +28,7 @@ import { controlError } from './serialize';
 export function buildControlApp(options: ControlApiOptions): H3 {
   const app = new H3();
   const routes = buildControlRouteTable(options);
-  const auth = resolveControlAuth(options.auth, readNodeEnv());
+  const auth = resolveControlAuth(options.auth, readControlEnv());
   const principals = new WeakMap<H3Event, Principal>();
 
   app.use(async (event, next) => {
@@ -98,12 +102,16 @@ async function dispatch(
 }
 
 /**
- * `NODE_ENV`, read defensively: the `/control` entry is meant to run on
- * edge/serverless runtimes where `process` may be undefined, so a bare
+ * Read the runtime environment defensively. The `/control` entry is meant to run
+ * on edge/serverless runtimes where `process` may be undefined, so a bare
  * `process.env.NODE_ENV` would throw a `ReferenceError` before the app is built.
+ * A missing `process` is reported as `'unknown'` rather than an unset `NODE_ENV`,
+ * so {@link resolveControlAuth} fails closed instead of defaulting to dev-open.
  */
-function readNodeEnv(): string | undefined {
-  return typeof process !== 'undefined' ? process.env.NODE_ENV : undefined;
+function readControlEnv(): ControlEnv {
+  return typeof process === 'undefined'
+    ? 'unknown'
+    : { nodeEnv: process.env.NODE_ENV };
 }
 
 function formatChallenge(challenge: AuthChallenge): string {

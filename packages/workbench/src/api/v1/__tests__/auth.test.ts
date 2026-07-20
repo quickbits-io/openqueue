@@ -10,39 +10,63 @@ function req(authorization?: string): Request {
 
 describe('resolveControlAuth', () => {
   it('uses strategies mode when a token is configured', () => {
-    expect(resolveControlAuth({ token: 't' }, 'production').mode).toBe(
-      'strategies',
-    );
+    expect(
+      resolveControlAuth({ token: 't' }, { nodeEnv: 'production' }).mode,
+    ).toBe('strategies');
   });
 
   it('uses strategies mode with an (even empty) strategies array', () => {
-    expect(resolveControlAuth({ strategies: [] }, 'development').mode).toBe(
-      'strategies',
-    );
+    expect(
+      resolveControlAuth({ strategies: [] }, { nodeEnv: 'development' }).mode,
+    ).toBe('strategies');
   });
 
-  it('is open when unconfigured outside production', () => {
-    expect(resolveControlAuth(undefined, 'development')).toEqual({
+  it('is open when unconfigured in a readable non-production environment', () => {
+    expect(resolveControlAuth(undefined, { nodeEnv: 'development' })).toEqual({
       mode: 'open',
     });
-    expect(resolveControlAuth({}, 'development')).toEqual({ mode: 'open' });
+    expect(resolveControlAuth({}, { nodeEnv: 'development' })).toEqual({
+      mode: 'open',
+    });
+    // A readable but unset NODE_ENV is still development — open.
+    expect(resolveControlAuth(undefined, { nodeEnv: undefined })).toEqual({
+      mode: 'open',
+    });
   });
 
   it('is locked when unconfigured in production', () => {
-    expect(resolveControlAuth(undefined, 'production')).toEqual({
+    expect(resolveControlAuth(undefined, { nodeEnv: 'production' })).toEqual({
       mode: 'locked',
     });
   });
 
+  it('fails closed when the environment is unreadable (edge, no process)', () => {
+    // An edge runtime that hid `process` cannot confirm non-production, so the
+    // unconfigured default must lock rather than fall open.
+    expect(resolveControlAuth(undefined, 'unknown')).toEqual({
+      mode: 'locked',
+    });
+    expect(resolveControlAuth({}, 'unknown')).toEqual({ mode: 'locked' });
+    // An explicit token still wins over the unknown environment.
+    expect(resolveControlAuth({ token: 't' }, 'unknown').mode).toBe(
+      'strategies',
+    );
+  });
+
   it('ignores empty tokens and locks in production', () => {
-    expect(resolveControlAuth({ token: '' }, 'production')).toEqual({
+    expect(
+      resolveControlAuth({ token: '' }, { nodeEnv: 'production' }),
+    ).toEqual({
       mode: 'locked',
     });
   });
 });
 
 describe('authorizeControlRequest', () => {
-  const tokenAuth = resolveControlAuth({ token: 'secret' }, 'production');
+  const tokenAuth = resolveControlAuth(
+    { token: 'secret' },
+    { nodeEnv: 'production' },
+  );
 
   it('accepts a matching bearer token and returns the principal', async () => {
     const decision = await authorizeControlRequest(
@@ -82,7 +106,10 @@ describe('authorizeControlRequest', () => {
   });
 
   it('accepts any of multiple configured tokens', async () => {
-    const multi = resolveControlAuth({ token: ['a', 'b'] }, 'production');
+    const multi = resolveControlAuth(
+      { token: ['a', 'b'] },
+      { nodeEnv: 'production' },
+    );
     expect((await authorizeControlRequest(multi, req('Bearer b'))).ok).toBe(
       true,
     );
@@ -94,7 +121,7 @@ describe('authorizeControlRequest', () => {
     };
     const auth = resolveControlAuth(
       { token: 'secret', strategies: [throwing] },
-      'production',
+      { nodeEnv: 'production' },
     );
     expect((await authorizeControlRequest(auth, req('Bearer secret'))).ok).toBe(
       true,
@@ -120,7 +147,10 @@ describe('authorizeControlRequest', () => {
   });
 
   it('fails closed on an empty strategies array', async () => {
-    const auth = resolveControlAuth({ strategies: [] }, 'development');
+    const auth = resolveControlAuth(
+      { strategies: [] },
+      { nodeEnv: 'development' },
+    );
     expect(
       (await authorizeControlRequest(auth, req('Bearer anything'))).ok,
     ).toBe(false);

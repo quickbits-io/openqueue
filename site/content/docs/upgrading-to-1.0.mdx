@@ -138,7 +138,10 @@ const client = createClient({ host: 'https://worker.example.com' });
   this is intended.
 - **The `/openqueue/v1` control API is fail-closed in production.** When neither
   `api.token` nor `api.auth` is set, the API is open in development and returns
-  401 when `NODE_ENV=production`. An empty `api.auth: []` always 401s.
+  401 when `NODE_ENV=production`. It also fails closed on a runtime that hides
+  `process` (edge/serverless), where a non-production environment can't be
+  confirmed — set `api.token`/`api.auth` explicitly there. An empty
+  `api.auth: []` always 401s.
 - **Wire envelopes tightened:** unknown control-API routes return a `404`
   `not_found` envelope, and an unsupported transport capability (e.g. flows on a
   Postgres world) returns `501 unsupported_capability` instead of a generic error.

@@ -21,14 +21,23 @@ export type ControlAuth =
   | { mode: 'locked' };
 
 /**
+ * Runtime environment for the unconfigured-auth default. `{ nodeEnv }` carries a
+ * readable `NODE_ENV` (its own value may be unset ⇒ development); `'unknown'`
+ * means the runtime hid `process` (edge/serverless) so a non-production
+ * environment cannot be confirmed — the default then fails closed.
+ */
+export type ControlEnv = { nodeEnv: string | undefined } | 'unknown';
+
+/**
  * Resolve the control-API auth policy. A configured `token` becomes a leading
- * `apiKey()`; `strategies` (even the empty array) forces the walk; neither set
- * ⇒ `open` in development and `locked` (fail-closed) when
- * `NODE_ENV=production`.
+ * `apiKey()`; `strategies` (even the empty array) forces the walk. With neither
+ * set the default is `open` only in a readable non-production environment; it is
+ * `locked` (fail-closed) in production *and* when the environment is `'unknown'`,
+ * so an edge runtime that can't read `NODE_ENV` never falls open by default.
  */
 export function resolveControlAuth(
   config: ControlAuthConfig | undefined,
-  nodeEnv: string | undefined,
+  env: ControlEnv,
 ): ControlAuth {
   const tokens = normalizeTokens(config?.token);
   const strategies = config?.strategies;
@@ -38,7 +47,8 @@ export function resolveControlAuth(
     if (strategies !== undefined) walk.push(...strategies);
     return { mode: 'strategies', strategies: walk };
   }
-  return nodeEnv === 'production' ? { mode: 'locked' } : { mode: 'open' };
+  const locked = env === 'unknown' || env.nodeEnv === 'production';
+  return locked ? { mode: 'locked' } : { mode: 'open' };
 }
 
 /** Outcome of authorizing a control-API request. */

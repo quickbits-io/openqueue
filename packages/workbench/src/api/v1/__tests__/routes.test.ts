@@ -701,6 +701,24 @@ describe('control app auth', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('fails closed on an edge runtime with no process and no configured auth', async () => {
+    // No `process` (edge) + no api.token/api.auth: an unreadable environment
+    // cannot be assumed non-production, so the control API must lock rather than
+    // fall open. The policy is baked when the app is built, so build under the
+    // stub, then restore `process` before issuing the request.
+    vi.stubGlobal('process', undefined);
+    try {
+      const app = buildControlApp(makeOptions());
+      vi.unstubAllGlobals();
+      const res = await app.request('/catalog');
+      expect(res.status).toBe(401);
+      const parsed = errorResponseSchema.parse(await res.json());
+      expect(parsed.error.code).toBe('unauthorized');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('control query round-trip', () => {

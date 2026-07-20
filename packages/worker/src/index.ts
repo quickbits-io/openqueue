@@ -73,7 +73,7 @@ export async function startWorkerApp(
 
   const controlAuth = resolveControlAuth(
     config.api && { token: config.api.token, strategies: config.api.auth },
-    process.env.NODE_ENV,
+    { nodeEnv: process.env.NODE_ENV },
   );
   health.mount(
     '/openqueue/v1',
