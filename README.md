@@ -77,9 +77,10 @@ no code changes.
 
 > **Runtime note:** the Node-capable packages (`@openqueue/core`, `@openqueue/sdk`,
 > `@openqueue/client`, `@openqueue/workbench`, `@openqueue/world-bullmq`,
-> `@openqueue/world-postgres`) run on **Node 20.11.1+** or Bun. `@openqueue/worker`
-> and `@openqueue/cli` are **Bun-native** (they use Bun's bundler, process, and
-> HTTP server APIs).
+> `@openqueue/world-postgres`, `@openqueue/worker`) run on **Node 20.11.1+** or
+> Bun. `@openqueue/cli` is **Bun-native** (it uses Bun's process and glob APIs).
+> The worker's production artifact — built by the CLI via Nitro — runs on Node
+> `^20.19 || >=22.12` or Bun.
 
 ## Repository layout
 

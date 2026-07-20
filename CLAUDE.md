@@ -76,8 +76,8 @@ Per-package work: `cd packages/<pkg> && bun run build|test|typecheck`.
 | `packages/client` | `@openqueue/client` | Node 20.11+ / Bun / edge | Fetch-only HTTP client for a deployed worker; zero Redis/DB deps (only `zod`). |
 | `packages/world-bullmq` | `@openqueue/world-bullmq` | Node 20.11+ / Bun | BullMQ world (default delivery): Redis transport + write-through store. Owns ioredis/bullmq; the worker resolves `redis:` config sugar to it. |
 | `packages/world-postgres` | `@openqueue/world-postgres` | Node 20.11+ / Bun | Self-migrating Postgres world: `SELECT … FOR UPDATE SKIP LOCKED` transport + Drizzle store, zero Redis. |
-| `packages/worker` | `@openqueue/worker` | **Bun only** | Worker app; uses `Bun.serve`, loads config, serves Workbench. |
-| `packages/cli` | `@openqueue/cli` | **Bun only** | `openqueue` binary; uses `Bun.build`/`Bun.spawn`/`Bun.Glob`. |
+| `packages/worker` | `@openqueue/worker` | Node 20.11+ / Bun | h3 app + srvx host; loads config, serves Workbench. Production artifact built by the CLI via Nitro (Node ^20.19 ‖ ≥22.12 or Bun). |
+| `packages/cli` | `@openqueue/cli` | **Bun only** | `openqueue` binary; `build` compiles the worker into a Nitro artifact; uses `Bun.spawn`/`Bun.Glob`. |
 | `packages/workbench` | `@openqueue/workbench` | Node 20.11+ / Bun | Dashboard (React, built by Vite) + h3/Next adapters (built by tsup). |
 | `site` | — | — | Docs/marketing (Next.js + Fumadocs). Private. |
 | `examples/basic` | — | Bun | A runnable example worker. Private. |
@@ -88,7 +88,9 @@ Libraries build with `tsup` to ESM + `.d.ts` in `dist/`. The workbench also
 builds its React SPA with Vite into `dist/ui` (served from disk via
 `UI_DIST_PATH`). Package `exports`/`files` point at `dist`, so what you import in
 dev is what npm ships. `workspace:*` inter-deps are rewritten to exact versions
-at publish time.
+at publish time. `openqueue build` additionally compiles the worker into a
+self-contained Nitro node-server bundle at `.output` — the CLI's production
+artifact, booted by `openqueue start`.
 
 ### Package imports
 

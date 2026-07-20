@@ -95,8 +95,8 @@ await exampleTask.trigger(payload, { delay: 60_000 });
 ## 4. Ship it
 
 ```bash
-bunx openqueue build   # bundles tasks into .openqueue/build/manifest.mjs
-bunx openqueue start   # runs the worker from the manifest
+bunx openqueue build   # compiles the worker into a Nitro artifact (.output)
+bunx openqueue start   # runs the built artifact (or from source if absent)
 ```
 
 See [Deployment](/docs/deployment) for Docker and production notes.

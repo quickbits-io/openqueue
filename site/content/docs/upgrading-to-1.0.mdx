@@ -12,10 +12,11 @@ that matters most: **the common path is unchanged.**
 
 - **Node `>= 20.11.1` or Bun `>= 1.2`** for the Node-capable packages
   (`@openqueue/core`, `@openqueue/sdk`, `@openqueue/client`,
-  `@openqueue/workbench`, `@openqueue/world-bullmq`, `@openqueue/world-postgres`).
-  20.11.1 is the floor because h3 v2 requires it; 22+ is recommended. Node 18 and
-  20-before-20.11 are both past end-of-life.
-- `@openqueue/worker` and `@openqueue/cli` remain **Bun-only** (`bun >= 1.2`).
+  `@openqueue/workbench`, `@openqueue/world-bullmq`, `@openqueue/world-postgres`,
+  `@openqueue/worker`). 20.11.1 is the floor because h3 v2 requires it; 22+ is
+  recommended. Node 18 and 20-before-20.11 are both past end-of-life.
+- `@openqueue/cli` remains **Bun-only** (`bun >= 1.2`). The worker's production
+  artifact (built by the CLI via Nitro) runs on Node `^20.19 || >=22.12` or Bun.
 - All `@openqueue/*` packages release in **lockstep** — every one jumps from
   `0.1.x` to `1.0.0` together.
 
@@ -43,6 +44,20 @@ import anything new for it.
 
 Bump your engines to Node 20.11.1 / Bun 1.2, update to `1.0.0`, and you're done.
 The rest of this page is for apps that reached below the config surface.
+
+## Build output
+
+`openqueue build` now compiles the worker into a self-contained Nitro
+node-server bundle at **`.output`** (configurable via `build.outDir`), replacing
+the old `.openqueue/build/manifest.mjs`. `openqueue start` prefers this artifact
+and falls back to booting from source when it is absent — the commands and your
+config are unchanged.
+
+- The artifact runs on **Node `^20.19 || >=22.12` or Bun** (Nitro's floor, above
+  the package's own `>= 20.11.1`).
+- A direct `node .output/server/index.mjs` boot defaults to **port 3000** unless
+  `PORT` is set; `openqueue start` injects `PORT`/`NITRO_PORT` to preserve the
+  `8090` default. See [Deployment](/docs/deployment).
 
 ## New packages
 

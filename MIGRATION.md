@@ -20,11 +20,25 @@ that section, done. The full reference lives in the docs:
 ## 1. Everyone: requirements
 
 - **Node `>= 20.11.1` or Bun `>= 1.2`** for `core`, `sdk`, `client`,
-  `workbench`, `world-bullmq`, `world-postgres`. (Node 18 support is dropped;
-  both 18 and pre-20.11 are past EOL. 22+ recommended.)
-- `@openqueue/worker` and `@openqueue/cli` remain **Bun-only**.
+  `workbench`, `world-bullmq`, `world-postgres`, and `worker`. (Node 18 support
+  is dropped; both 18 and pre-20.11 are past EOL. 22+ recommended.)
+- `@openqueue/cli` remains **Bun-only**. `@openqueue/worker` now runs on Node
+  too — its h3 app hosts on [srvx](https://srvx.h3.dev).
 - Upgrade every `@openqueue/*` dependency to `1.0.0` at once — mixed versions
   across the lockstep group are unsupported.
+
+### `openqueue build` now emits a Nitro artifact
+
+`openqueue build` no longer writes `.openqueue/build/manifest.mjs`; it compiles
+the worker into a self-contained Nitro **node-server bundle at `.output`**
+(configurable via `build.outDir`). `openqueue start` prefers this artifact and
+falls back to booting from source when it is absent — no config change needed.
+
+- The artifact runs on **Node `^20.19 || >=22.12` or Bun** (Nitro's floor, above
+  the package's own `>= 20.11.1`).
+- Booting it directly with `node .output/server/index.mjs` defaults to **port
+  3000** unless you set `PORT`; `openqueue start` injects `PORT`/`NITRO_PORT` so
+  the worker's `8090` default is preserved.
 
 ## 2. The common path: no code changes
 
