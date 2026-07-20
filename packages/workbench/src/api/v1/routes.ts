@@ -27,6 +27,7 @@ import type { ControlAuthConfig } from './auth';
 import {
   canAccess,
   scopeDedupeKey,
+  scopeEnqueueOptions,
   scopeMetaFilter,
   stampMeta,
 } from './principal';
@@ -91,18 +92,18 @@ export function buildControlRouteTable(options: ControlApiOptions): RouteDef[] {
       handler: async (input) => {
         const parsed = parseBody(input.body, enqueueRequestSchema);
         if (!parsed.ok) return parsed.response;
-        const { task } = parsed.data;
-        const entry = await runtime.catalog.resolve(task);
-        if (!entry) {
-          return controlError('task_not_found', `Unknown task "${task}"`);
-        }
+        // Resolve the task through `trigger` (the shared published catalog), not a
+        // process-local preflight: in a multi-pool namespace the local view can
+        // diverge from where the enqueue actually resolves. `trigger` throws
+        // UnknownTaskError, which maps to task_not_found below.
         const opts = toEnqueueOptions(parsed.data.options);
+        const scopedOpts = scopeEnqueueOptions(input.principal, opts);
         const meta = stampMeta(opts?.meta, input.principal);
         try {
           const result = await runtime.trigger(
-            task,
+            parsed.data.task,
             parsed.data.input,
-            withMeta(opts, meta),
+            withMeta(scopedOpts, meta),
           );
           return { status: 201, body: result };
         } catch (err) {
@@ -423,6 +424,9 @@ function parseBody<T>(
 }
 
 function triggerError(err: unknown): HandlerResult {
+  if (err instanceof UnknownTaskError) {
+    return controlError('task_not_found', err.message);
+  }
   if (err instanceof UnsupportedCapabilityError) {
     return controlError('unsupported_capability', err.message);
   }

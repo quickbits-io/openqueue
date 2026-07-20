@@ -1,4 +1,9 @@
-import type { EnqueueMeta, Principal, RunPrincipal } from '@openqueue/core';
+import type {
+  EnqueueMeta,
+  EnqueueOptions,
+  Principal,
+  RunPrincipal,
+} from '@openqueue/core';
 
 /** Project a {@link Principal} to the identity slice stamped onto runs/schedules. */
 export function toRunPrincipal(principal: Principal): RunPrincipal {
@@ -74,8 +79,37 @@ export function scopeDedupeKey(
 ): string | undefined {
   const tenantId = principal?.tenantId;
   if (tenantId === undefined || key === undefined) return key;
+  return scopeToken(tenantId, key);
+}
+
+/**
+ * Namespace caller-supplied enqueue ids (`runId`, `jobId`) under the tenant, the
+ * same idempotent `t:<tenant>:` scheme {@link scopeDedupeKey} uses for schedule
+ * keys. Run persistence upserts by run id and the transport dedupes by job id, so
+ * without this a tenant-scoped caller could guess another tenant's id and
+ * overwrite (and re-own) their run before any `canAccess` check runs. Unscoped
+ * principals (operators) keep the raw ids.
+ */
+export function scopeEnqueueOptions(
+  principal: Principal | undefined,
+  opts: EnqueueOptions | undefined,
+): EnqueueOptions | undefined {
+  const tenantId = principal?.tenantId;
+  if (opts === undefined || tenantId === undefined) return opts;
+  if (opts.runId === undefined && opts.jobId === undefined) return opts;
+  const scoped: EnqueueOptions = { ...opts };
+  if (opts.runId !== undefined) scoped.runId = scopeToken(tenantId, opts.runId);
+  if (opts.jobId !== undefined) scoped.jobId = scopeToken(tenantId, opts.jobId);
+  return scoped;
+}
+
+/**
+ * Idempotent tenant prefix: a value already bearing this tenant's `t:<tenant>:`
+ * prefix is left as-is so a resend (read-modify-write) does not double-scope.
+ */
+function scopeToken(tenantId: string, value: string): string {
   const prefix = `t:${encodeURIComponent(tenantId)}:`;
-  return key.startsWith(prefix) ? key : `${prefix}${key}`;
+  return value.startsWith(prefix) ? value : `${prefix}${value}`;
 }
 
 /**

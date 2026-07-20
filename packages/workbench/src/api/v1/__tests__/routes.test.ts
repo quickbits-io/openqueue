@@ -174,12 +174,96 @@ describe('control routes — jobs', () => {
 
   it('rejects an unknown task with 404 task_not_found', async () => {
     const result = await handlerFor(
-      makeOptions({ catalog: [] }),
+      makeOptions({
+        catalog: [],
+        trigger: async () => {
+          throw new UnknownTaskError('nope');
+        },
+      }),
       'post',
       '/jobs',
     )({ params: {}, query: {}, body: { task: 'nope', input: {} } });
     expect(result.status).toBe(404);
     expect(result.body).toMatchObject({ error: { code: 'task_not_found' } });
+  });
+
+  it('resolves through trigger, not a local preflight, so a task missing from the shared catalog is 404 not 500', async () => {
+    // Multi-pool: a stale local view still lists the task, but the shared catalog
+    // that trigger resolves against no longer has it. The control API must resolve
+    // where the enqueue actually happens — surfacing task_not_found, not an
+    // internal 500 from a divergent preflight.
+    const result = await handlerFor(
+      makeOptions({
+        catalog: [catalogEntry({ id: 'ghost' })],
+        trigger: async () => {
+          throw new UnknownTaskError('ghost');
+        },
+      }),
+      'post',
+      '/jobs',
+    )({ params: {}, query: {}, body: { task: 'ghost', input: {} } });
+    expect(result.status).toBe(404);
+    expect(result.body).toMatchObject({ error: { code: 'task_not_found' } });
+  });
+
+  it('enqueues a task absent from the local catalog but resolvable by trigger (cross-pool)', async () => {
+    // The task is not in this pool's local catalog, but the shared catalog that
+    // trigger resolves against has it. Without a local preflight the namespace-level
+    // enqueue succeeds instead of a false task_not_found.
+    const result = await handlerFor(
+      makeOptions({ catalog: [], trigger: async () => enqueueResult }),
+      'post',
+      '/jobs',
+    )({ params: {}, query: {}, body: { task: 'remote-task', input: {} } });
+    expect(result.status).toBe(201);
+    expect(result.body).toEqual(enqueueResult);
+  });
+
+  it('scopes caller-supplied runId/jobId under the tenant so cross-tenant run clobber is impossible', async () => {
+    let captured: EnqueueOptions | undefined;
+    const options = makeOptions({
+      trigger: async (_task, _input, opts) => {
+        captured = opts;
+        return enqueueResult;
+      },
+    });
+    await handlerFor(
+      options,
+      'post',
+      '/jobs',
+    )({
+      params: {},
+      query: {},
+      body: {
+        task: 'send-email',
+        input: {},
+        options: { runId: 'shared', jobId: 'shared-job' },
+      },
+      principal: principal('t1'),
+    });
+    expect(captured?.runId).toBe('t:t1:shared');
+    expect(captured?.jobId).toBe('t:t1:shared-job');
+  });
+
+  it('leaves enqueue ids raw for an unscoped (operator) caller', async () => {
+    let captured: EnqueueOptions | undefined;
+    const options = makeOptions({
+      trigger: async (_task, _input, opts) => {
+        captured = opts;
+        return enqueueResult;
+      },
+    });
+    await handlerFor(
+      options,
+      'post',
+      '/jobs',
+    )({
+      params: {},
+      query: {},
+      body: { task: 'send-email', input: {}, options: { runId: 'raw' } },
+      principal: principal(),
+    });
+    expect(captured?.runId).toBe('raw');
   });
 
   it('rejects an invalid enqueue body with 400 invalid_request and an issues array', async () => {
@@ -832,7 +916,8 @@ describe('control routes — principal stamping', () => {
         const existingId = input.deduplicationKey
           ? byDedupe.get(input.deduplicationKey)
           : undefined;
-        const id = existingId ?? `s${(seq += 1)}`;
+        if (!existingId) seq += 1;
+        const id = existingId ?? `s${seq}`;
         const schedule = queueSchedule({
           id,
           deduplicationKey: input.deduplicationKey,
