@@ -71,12 +71,26 @@ export function createBullmqTransport(
   // ioredis clients are not structurally `ConnectionOptions`; BullMQ accepts a
   // live client here. This is the single place the coercion lives.
   const connection = options.producer as unknown as ConnectionOptions;
-  const workerConnection = (options.consumer ??
-    options.producer) as unknown as ConnectionOptions;
 
   const queues = new Map<string, Queue>();
   const consumers = new Set<BullmqConsumer>();
   let flowProducer: FlowProducer | null = null;
+
+  // A BullMQ worker needs a blocking connection with `maxRetriesPerRequest: null`;
+  // a plain producer client (default retries) makes `new Worker` throw. Reuse an
+  // injected consumer, otherwise duplicate the producer into a transport-owned
+  // client — created lazily on first `consume`, quit on `close` — so the world
+  // wrapper (which passes an explicit consumer) never double-duplicates, and the
+  // caller's producer is never mutated or closed.
+  let ownedConsumer: Redis | undefined;
+  const workerConnection = (): ConnectionOptions => {
+    const client =
+      options.consumer ??
+      (ownedConsumer ??= options.producer.duplicate({
+        maxRetriesPerRequest: null,
+      }));
+    return client as unknown as ConnectionOptions;
+  };
 
   function queue(name: string): Queue {
     const existing = queues.get(name);
@@ -133,7 +147,7 @@ export function createBullmqTransport(
       const consumer = createBullmqConsumer(
         name,
         options,
-        workerConnection,
+        workerConnection(),
         prefix,
       );
       consumers.add(consumer);
@@ -156,6 +170,9 @@ export function createBullmqTransport(
       consumers.clear();
       await Promise.all(Array.from(queues.values()).map((q) => q.close()));
       await flowProducer?.close();
+      // Quit only the blocking connection this transport spawned; injected
+      // producer/consumer clients belong to the caller and stay open.
+      await ownedConsumer?.quit().catch(() => undefined);
     },
   };
 }
