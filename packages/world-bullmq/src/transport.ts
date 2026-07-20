@@ -84,11 +84,13 @@ export function createBullmqTransport(
   // caller's producer is never mutated or closed.
   let ownedConsumer: Redis | undefined;
   const workerConnection = (): ConnectionOptions => {
-    const client =
-      options.consumer ??
-      (ownedConsumer ??= options.producer.duplicate({
+    let client = options.consumer;
+    if (client === undefined) {
+      ownedConsumer ??= options.producer.duplicate({
         maxRetriesPerRequest: null,
-      }));
+      });
+      client = ownedConsumer;
+    }
     return client as unknown as ConnectionOptions;
   };
 
