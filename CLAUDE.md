@@ -96,7 +96,7 @@ Use the published specifiers, not deep relative paths across packages:
 
 ```ts
 import { task, defineConfig } from '@openqueue/sdk';
-import { createWorker } from '@openqueue/core';
+import { createQueueWorker } from '@openqueue/core';
 import { buildWorkbenchApp } from '@openqueue/workbench/h3';
 ```
 
