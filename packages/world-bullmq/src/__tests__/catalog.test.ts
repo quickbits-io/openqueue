@@ -99,6 +99,12 @@ class RedisMock {
     this.values.set(key, value);
   }
 
+  // The world duplicates an injected producer into a worker-safe consumer; the
+  // control path never uses it, so a distinct stub connection is enough.
+  duplicate() {
+    return new RedisMock();
+  }
+
   async quit() {}
 }
 

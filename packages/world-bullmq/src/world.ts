@@ -19,7 +19,9 @@ import { createBullmqTransport } from './transport';
  * A BullMQ-backed world: a Redis delivery transport paired with a write-through
  * durable state store. Supply either a connection `url` (the world creates and
  * owns a producer + blocking consumer, quitting both on close) or your own
- * `producer` (and optional blocking `consumer`), which the world leaves open.
+ * `producer` (left open by the world). When you pass a `producer` without a
+ * `consumer`, the world duplicates it into a worker-safe blocking connection it
+ * owns — a bare `producer` isn't usable for BullMQ workers on its own.
  *
  * `storage` (e.g. a `postgresAdapter`) is the durable backing for schedules and
  * runs and doubles as the sole catalog fallback consulted after Redis.
@@ -39,7 +41,7 @@ export function worldBullmq(
 ): (ctx: WorldContext) => OpenQueueWorld {
   return (ctx: WorldContext): OpenQueueWorld => {
     const namespace = ctx.namespace;
-    const { producer, consumer, owned } = resolveClients(options);
+    const { producer, consumer, ownedClients } = resolveClients(options);
     const transport = createBullmqTransport({
       producer,
       consumer,
@@ -71,41 +73,42 @@ export function worldBullmq(
       close: async () => {
         await transport.close();
         await store.alerts.close?.();
-        if (owned) {
-          await producer.quit().catch(() => undefined);
-          await consumer.quit().catch(() => undefined);
-        }
+        await Promise.all(
+          ownedClients.map((client) => client.quit().catch(() => undefined)),
+        );
       },
     };
   };
 }
 
 /**
- * Resolve the producer/consumer pair from the option shape. The `url` form
- * mints internally-owned clients (lazyConnect; the consumer is a blocking
- * connection) that `world.close()` quits; the `producer` form hands ownership
- * back to the caller.
+ * Resolve the producer/consumer pair and the set of clients `world.close()`
+ * must quit. The `url` form mints two internally-owned clients (lazyConnect; the
+ * consumer is a blocking connection). An injected `producer` is left to the
+ * caller; an injected `consumer` too. But a `producer` supplied *without* a
+ * `consumer` is not worker-safe on its own — BullMQ blocking connections must
+ * set `maxRetriesPerRequest: null` — so the world duplicates it into a
+ * world-owned blocking consumer, leaving the caller's producer untouched.
  */
 function resolveClients(options: WorldBullmqOptions): {
   producer: Redis;
   consumer: Redis;
-  owned: boolean;
+  ownedClients: Redis[];
 } {
   if (options.url !== undefined) {
-    return {
-      producer: new Redis(options.url, { lazyConnect: true }),
-      consumer: new Redis(options.url, {
-        maxRetriesPerRequest: null,
-        lazyConnect: true,
-      }),
-      owned: true,
-    };
+    const producer = new Redis(options.url, { lazyConnect: true });
+    const consumer = new Redis(options.url, {
+      maxRetriesPerRequest: null,
+      lazyConnect: true,
+    });
+    return { producer, consumer, ownedClients: [producer, consumer] };
   }
-  return {
-    producer: options.producer,
-    consumer: options.consumer ?? options.producer,
-    owned: false,
-  };
+  const producer = options.producer;
+  if (options.consumer) {
+    return { producer, consumer: options.consumer, ownedClients: [] };
+  }
+  const consumer = producer.duplicate({ maxRetriesPerRequest: null });
+  return { producer, consumer, ownedClients: [consumer] };
 }
 
 async function resolveWorldCatalog(
