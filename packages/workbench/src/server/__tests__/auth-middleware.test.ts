@@ -51,4 +51,23 @@ describe('workbenchAuthMiddleware', () => {
     const app = appWith([]);
     expect((await app.request('/')).status).toBe(401);
   });
+
+  it('treats empty basic credentials as auth-off, not a lock-out', async () => {
+    // Matches WorkbenchCore.requiresAuth: env-derived empty strings mean the
+    // dashboard is open, not 401-locked.
+    expect(
+      workbenchAuthMiddleware({ username: '', password: '' }),
+    ).toBeUndefined();
+    const app = appWith({ username: '', password: '' });
+    expect((await app.request('/')).status).toBe(200);
+  });
+
+  it('treats a partially-filled credentials form as auth-off', () => {
+    expect(
+      workbenchAuthMiddleware({ username: 'admin', password: '' }),
+    ).toBeUndefined();
+    expect(
+      workbenchAuthMiddleware({ username: '', password: 'pw' }),
+    ).toBeUndefined();
+  });
 });

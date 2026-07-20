@@ -18,6 +18,12 @@ export function workbenchAuthMiddleware(
   auth: WorkbenchOptions['auth'],
 ): Middleware | undefined {
   if (auth === undefined) return undefined;
+  // Match WorkbenchCore.requiresAuth: the credentials form only turns auth on when
+  // both fields are set, so env-derived empty strings mean auth-off rather than a
+  // 401 lock-out. The strategy-array form (including the empty array) stays
+  // fail-closed.
+  if (!Array.isArray(auth) && !(auth.username && auth.password))
+    return undefined;
   const strategies: AuthStrategy[] = Array.isArray(auth)
     ? auth
     : [httpBasic(auth)];
