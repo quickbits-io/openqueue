@@ -43,7 +43,8 @@
   },
   "dependencies": {
     "@openqueue/core": "workspace:*",
-    "@openqueue/worker": "workspace:*"
+    "@openqueue/worker": "workspace:*",
+    "nitro": "3.0.260610-beta"
   },
   "devDependencies": {
     "@types/bun": "^1.2.18",
