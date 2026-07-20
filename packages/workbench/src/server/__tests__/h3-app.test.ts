@@ -34,6 +34,38 @@ describe('buildWorkbenchApp — rou3 root matching', () => {
       expect(res.headers.get('content-type')).toBe('text/html; charset=UTF-8');
     }
   });
+
+  it('serves index for a HEAD deep-link (HEAD rides the GET fallback)', async () => {
+    const res = await buildWorkbenchApp(core()).request('/queues/email', {
+      method: 'HEAD',
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+  });
+
+  it('does not serve index.html for a non-GET request to an unknown path', async () => {
+    // A missed mutation (POST/DELETE) must not fall through to the SPA fallback
+    // and read as a 200 HTML success; it gets h3's 404 for an unmatched route.
+    for (const method of ['POST', 'DELETE']) {
+      const res = await buildWorkbenchApp(core()).request('/nope/unknown', {
+        method,
+      });
+      expect(res.status).toBe(404);
+      expect(res.headers.get('content-type')).not.toBe(
+        'text/html; charset=UTF-8',
+      );
+    }
+  });
+
+  it('does not serve index.html for a POST to an unknown /api path', async () => {
+    const res = await buildWorkbenchApp(core()).request('/api/not-a-route', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).not.toBe(
+      'text/html; charset=UTF-8',
+    );
+  });
 });
 
 describe('buildWorkbenchApp — wire parity', () => {

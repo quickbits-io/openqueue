@@ -67,7 +67,11 @@ export function buildWorkbenchApp(core: WorkbenchCore): H3 {
     });
   });
 
-  app.all('/**', (event) => {
+  // SPA deep-link fallback: GET-only (h3 serves HEAD off the GET route). Other
+  // methods must not receive `index.html` — a POST/PUT/DELETE to an unknown or
+  // unmatched `/api` path falls through with no route and gets h3's JSON 404,
+  // not a misleading 200 HTML body for a missed mutation.
+  app.on('get', '/**', (event) => {
     const basePath = resolveBasePath(core.options.basePath, event.url.pathname);
     const html = renderIndexHtml(basePath, core.options.title || 'Workbench');
     return new Response(html.body, {
