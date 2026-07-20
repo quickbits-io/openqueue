@@ -72,8 +72,14 @@ the browser.
 
 ## 3. Trigger from your app
 
+The worker serves a control API; `createClient({ host })` binds it as the
+process runtime so `trigger()` goes over HTTP — no Redis connection in your app.
+
 ```ts
+import { createClient } from '@openqueue/sdk/client';
 import { exampleTask } from './worker/example';
+
+createClient({ host: 'http://localhost:8288' });
 
 await exampleTask.trigger({ message: 'deploy finished' });
 ```

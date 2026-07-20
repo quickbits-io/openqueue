@@ -69,7 +69,7 @@ default Test body.
 Every task carries a typed trigger:
 
 ```ts
-const { id } = await resizeImage.trigger(
+const { runId } = await resizeImage.trigger(
   { src: 's3://uploads/a.heic', sizes: [128] },
   { delay: 5_000 },
 );
@@ -84,5 +84,13 @@ import { trigger } from '@openqueue/sdk';
 await trigger('resize-image', { src: 's3://uploads/a.heic', sizes: [128] });
 ```
 
-Triggering requires a queue runtime (created by the worker, or via
-`createQueueClient` in API processes that only enqueue).
+Triggering requires a bound queue runtime. Inside the worker process it's
+ambient — the worker binds it at boot. In any other process (an API server, a
+serverless function), bind the HTTP client once at startup and both
+`task.trigger()` and `trigger()` dispatch over HTTP:
+
+```ts
+import { createClient } from '@openqueue/sdk/client';
+
+createClient({ host: 'https://worker.example.com' });
+```

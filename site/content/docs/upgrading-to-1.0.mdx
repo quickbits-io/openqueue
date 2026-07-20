@@ -67,7 +67,8 @@ them. If you did wire a runtime by hand, here are the replacements:
 
 | Removed | Replacement |
 | --- | --- |
-| `configureEnqueue` | `createClient({ host })` from `@openqueue/client` (recommended, connection-free), or `createQueueClient({ world })` for an in-process runtime. |
+| `configureEnqueue` | `createClient({ host })` from `@openqueue/client` / `@openqueue/sdk/client` — connection-free HTTP dispatch. |
+| `createQueueClient`, `QueueClient`, `QueueClientOptions` | Removed — there is no in-process producer client at 1.0. Dispatch over HTTP with `createClient({ host })`; a host app embedding a producer plane uses `createControlRuntime` from `@openqueue/core/control` ([Two-plane](/docs/two-plane)). |
 | `createConnection`, `closeConnection`, `QueueConnection` | The world owns its connections. `worldBullmq({ url })` opens and closes them; pass your own `producer`/`consumer` to keep ownership. |
 | `createQueue`, `defaultJobOptions`, `queue` | The transport owns queues. Reach them via `worldBullmq` or `isBullmqTransport(runtime.transport)`. |
 | `createWorker`, `CreateWorkerOptions` | `createQueueWorker({ world, tasks })`, or just run `@openqueue/worker`. |
@@ -76,17 +77,12 @@ them. If you did wire a runtime by hand, here are the replacements:
 | `bullPrefix`, `DEFAULT_BULL_PREFIX`, `redisKey` | BullMQ key details live in the world: `worldBullmq({ prefix })` (absorbs the old `bullPrefix`). |
 | `QueueDefinitionInput` | Removed (unreferenced helper type; `QueueDefinition` remains). |
 
-`createQueueClient` and `createQueueWorker` now take a `world` (a `WorldFactory`)
-instead of a `redis` connection, and are **async** because a world factory may be
-async:
+`createQueueWorker` now takes a `world` (a `WorldFactory`) instead of a `redis`
+connection:
 
 ```ts
 // before (0.1.x)
 const client = createQueueClient({ redis: { url } });
-
-// after (1.0) — in-process
-import { worldBullmq } from '@openqueue/world-bullmq';
-const client = await createQueueClient({ world: worldBullmq({ url }) });
 
 // after (1.0) — connection-free (recommended for app code)
 import { createClient } from '@openqueue/client';

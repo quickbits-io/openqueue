@@ -17,8 +17,8 @@ export default defineConfig({
 ```
 
 Reach for `worldBullmq` directly only when you compose a runtime yourself
-(`createQueueWorker({ world })`, `createQueueClient({ world })`, or
-`createControlRuntime`) instead of going through `worker.config.ts`:
+(`createQueueWorker({ world })` or `createControlRuntime`) instead of going
+through `worker.config.ts`:
 
 ```ts
 import { createQueueWorker } from '@openqueue/core';

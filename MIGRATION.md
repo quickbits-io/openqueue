@@ -9,7 +9,7 @@ that section, done. The full reference lives in the docs:
 | --- | --- |
 | A worker app using `worker.config.ts` with `redis: { url }` | **Nothing but your Node/Bun version.** See [§1](#1-everyone-requirements) |
 | An app that dispatches jobs over HTTP (`@openqueue/sdk/client` / `@openqueue/client`) | **Nothing.** |
-| An app that called `configureEnqueue` / `createQueueClient({ redis })` | [§3](#3-you-wired-a-runtime-by-hand) |
+| An app that called `configureEnqueue` / `createQueueClient` | [§3](#3-you-wired-a-runtime-by-hand) |
 | Embedding the Workbench via `@openqueue/workbench/hono` | [§4](#4-you-embed-the-workbench) |
 | Reading `EnqueueResult.id` / `.transportJobId`, or passing `ttl` | [§5](#5-type-changes) |
 | Operating a deployment with JWT auth or an unset API token | [§6](#6-security-behavior-changes--read-before-deploying) |
@@ -60,24 +60,27 @@ And if you imported the config type: `QueueConfig` → `OpenQueueConfig`
 ## 3. You wired a runtime by hand
 
 The BullMQ engine left `@openqueue/core` (core is now transport-neutral and
-edge-clean). Low-level Redis-flavored exports moved or died:
+edge-clean), and the in-process producer client is gone at 1.0 — app code
+dispatches to a deployed worker over HTTP. Low-level Redis-flavored exports
+moved or died:
 
 ```ts
 // before (0.1.x)
 import { configureEnqueue, createQueueClient } from '@openqueue/core';
 const client = createQueueClient({ redis: { url } });
 
-// after (1.0) — option A, recommended for app code: connection-free HTTP
+// after (1.0) — connection-free HTTP dispatch
 import { createClient } from '@openqueue/client'; // or '@openqueue/sdk/client' to auto-bind task.trigger()
 const client = createClient({ host: 'https://worker.example.com', auth: { bearer: token } });
-
-// after (1.0) — option B: in-process runtime over an explicit world
-import { worldBullmq } from '@openqueue/world-bullmq';
-const client = await createQueueClient({ world: worldBullmq({ url }) }); // note: now async
 ```
 
-Removed → replacement quick map: `configureEnqueue` → `createClient` /
-`createQueueClient({ world })` · `createConnection`/`closeConnection` → the
+A host that embeds a producer plane without HTTP mounts the control API over
+`createControlRuntime` (`@openqueue/core/control`) — see
+[Two-plane](https://openqueue.dev/docs/two-plane).
+
+Removed → replacement quick map: `configureEnqueue` / `createQueueClient` →
+`createClient({ host })` (`@openqueue/client`, or `@openqueue/sdk/client` to
+auto-bind `task.trigger()`) · `createConnection`/`closeConnection` → the
 world owns connections (`worldBullmq({ url })`, or pass your own
 `producer`/`consumer`) · `createQueue`/`createWorker`/`createQueueSchedules` →
 `createQueueWorker({ world, tasks })` and `runtime.schedules` · catalog Redis
