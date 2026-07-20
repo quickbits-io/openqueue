@@ -241,8 +241,11 @@ describe('control routes — jobs', () => {
       },
       principal: principal('t1'),
     });
-    expect(captured?.runId).toBe('t:t1:shared');
-    expect(captured?.jobId).toBe('t:t1:shared-job');
+    expect(captured?.runId).toBe('t.t1.shared');
+    expect(captured?.jobId).toBe('t.t1.shared-job');
+    // The scope prefix must be a BullMQ-safe custom job id (no `:` separator).
+    expect(captured?.jobId).not.toContain(':');
+    expect(captured?.runId).not.toContain(':');
   });
 
   it('leaves enqueue ids raw for an unscoped (operator) caller', async () => {
@@ -894,7 +897,7 @@ describe('control routes — principal stamping', () => {
       },
       principal: principal('t1'),
     });
-    expect(captured?.deduplicationKey).toBe('t:t1:nightly');
+    expect(captured?.deduplicationKey).toBe('t.t1.nightly');
   });
 
   it('leaves the deduplication key raw for an unscoped (operator) principal', async () => {
@@ -985,7 +988,7 @@ describe('control routes — principal stamping', () => {
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({
       id: 's1',
-      deduplicationKey: 't:t1:nightly',
+      deduplicationKey: 't.t1.nightly',
     });
 
     // 2) Read-modify-write PATCH resending the echoed key must not double-scope.
@@ -996,11 +999,11 @@ describe('control routes — principal stamping', () => {
     )({
       params: { id: 's1' },
       query: {},
-      body: { deduplicationKey: 't:t1:nightly' },
+      body: { deduplicationKey: 't.t1.nightly' },
       principal: principal('t1'),
     });
     expect(patched.status).toBe(200);
-    expect(patched.body).toMatchObject({ deduplicationKey: 't:t1:nightly' });
+    expect(patched.body).toMatchObject({ deduplicationKey: 't.t1.nightly' });
 
     // 3) Re-create with the echoed key upserts the SAME schedule, not a second.
     const recreated = await handlerFor(
@@ -1013,13 +1016,13 @@ describe('control routes — principal stamping', () => {
       body: {
         task: 'send-email',
         cron: '* * * * *',
-        deduplicationKey: 't:t1:nightly',
+        deduplicationKey: 't.t1.nightly',
       },
       principal: principal('t1'),
     });
     expect(recreated.body).toMatchObject({
       id: 's1',
-      deduplicationKey: 't:t1:nightly',
+      deduplicationKey: 't.t1.nightly',
     });
     expect(byId.size).toBe(1);
     expect(byDedupe.size).toBe(1);
