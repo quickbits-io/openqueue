@@ -30,6 +30,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./nitro": {
+      "types": "./dist/nitro.d.ts",
+      "import": "./dist/nitro.js",
+      "default": "./dist/nitro.js"
     }
   },
   "files": [
