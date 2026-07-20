@@ -216,7 +216,11 @@ export function createWorkbenchForRuntime(
     readonly: workbench.readonly ?? false,
     auth: workbench.auth,
     tagFields: workbench.tagFields ?? [],
-    basePath: workbench.basePath,
+    // Match the mount default (startWorkerApp mounts the app at `/workbench`
+    // when basePath is unset). h3 `.mount()` strips the prefix before the app
+    // computes the HTML `<base href>`, so without this the dashboard would emit
+    // base `/` and request `/assets`/`/api` at the server root.
+    basePath: workbench.basePath ?? '/workbench',
     queue: {
       schedules: runtime.schedules,
       spans: runtime.spans,

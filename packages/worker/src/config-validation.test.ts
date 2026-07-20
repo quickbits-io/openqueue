@@ -1,4 +1,5 @@
 import {
+  createQueueWorker,
   type OpenQueueConfig,
   resolveNamespace,
   task,
@@ -6,7 +7,7 @@ import {
 } from '@openqueue/core';
 import { isBullmqTransport } from '@openqueue/world-bullmq';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { startWorkerApp } from './index';
+import { createWorkbenchForRuntime, startWorkerApp } from './index';
 
 function config(basePath: string): OpenQueueConfig {
   return {
@@ -102,5 +103,51 @@ describe('validateConfig accepts a world-only config', () => {
 
     await app.close();
     expect(stopped).toBe(true);
+  });
+});
+
+describe('createWorkbenchForRuntime base path', () => {
+  const noop = task({
+    id: 'base-path-noop',
+    queue: 'noop',
+    run: async () => undefined,
+  });
+
+  it('defaults basePath to the /workbench mount so mounted assets resolve', async () => {
+    const runtime = await createQueueWorker({
+      namespace: 'wb-base',
+      world: worldLocal(),
+      tasks: [noop],
+    });
+    const config: OpenQueueConfig = {
+      namespace: 'wb-base',
+      world: worldLocal(),
+      tasks: { module: './noop' },
+      workbench: { enabled: true },
+    };
+
+    const core = createWorkbenchForRuntime(runtime, config, []);
+    expect(core.options.basePath).toBe('/workbench');
+
+    await runtime.close();
+  });
+
+  it('respects an explicit basePath', async () => {
+    const runtime = await createQueueWorker({
+      namespace: 'wb-explicit',
+      world: worldLocal(),
+      tasks: [noop],
+    });
+    const config: OpenQueueConfig = {
+      namespace: 'wb-explicit',
+      world: worldLocal(),
+      tasks: { module: './noop' },
+      workbench: { enabled: true, basePath: '/admin/jobs' },
+    };
+
+    const core = createWorkbenchForRuntime(runtime, config, []);
+    expect(core.options.basePath).toBe('/admin/jobs');
+
+    await runtime.close();
   });
 });
