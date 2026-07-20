@@ -73,6 +73,7 @@ export {
   startRunSpan,
   traceCarrierKey,
 } from './otel-hooks';
+export { InvalidScheduleError, UnknownTaskError } from './request-errors';
 export { isTerminalRunStatus } from './runs';
 export type {
   CreateQueueWorkerOptions,

@@ -3,6 +3,7 @@ import { catalogEntryDefinition } from '../catalog';
 import { createControlRuntime } from '../control';
 import { enqueue } from '../enqueue';
 import { resolveNamespace } from '../namespace';
+import { InvalidScheduleError, UnknownTaskError } from '../request-errors';
 import { scheduleQueueNameFor, scheduleTickJobName } from '../schedules';
 import type { QueueDrain, QueueDrainEvent } from '../types';
 import type {
@@ -159,6 +160,40 @@ describe('createControlRuntime', () => {
     await expect(runtime.trigger('ghost', { hi: true })).rejects.toThrow(
       'Unknown task "ghost"; worker catalog has not been published',
     );
+
+    await runtime.close();
+  });
+
+  it('resolves an unknown catalog id to undefined (POST /jobs answers task_not_found, not 500)', async () => {
+    const runtime = await createControlRuntime(() => seededWorld());
+
+    // catalog.resolve follows the QueueCatalogStore contract (miss → undefined);
+    // only trigger stays strict and throws.
+    await expect(runtime.catalog.resolve('ghost')).resolves.toBeUndefined();
+
+    await runtime.close();
+  });
+
+  it('throws typed validation errors from schedules.create (wire-mappable, not internal)', async () => {
+    const world = seededWorld();
+    await world.store.publish([catalogEntry('echo')]);
+    const runtime = await createControlRuntime(() => world);
+
+    await expect(
+      runtime.schedules.create({
+        task: 'echo',
+        cron: 'not a cron',
+        deduplicationKey: 'k1',
+      }),
+    ).rejects.toBeInstanceOf(InvalidScheduleError);
+
+    await expect(
+      runtime.schedules.create({
+        task: 'ghost',
+        cron: '* * * * *',
+        deduplicationKey: 'k2',
+      }),
+    ).rejects.toBeInstanceOf(UnknownTaskError);
 
     await runtime.close();
   });

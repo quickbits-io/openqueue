@@ -5,6 +5,7 @@ import {
   type NamespaceOptions,
   resolveNamespace,
 } from './namespace';
+import { InvalidScheduleError } from './request-errors';
 import { deriveDefaultInput, task } from './task';
 import { assertCapability, type QueueTransport } from './transport/types';
 import type {
@@ -121,9 +122,9 @@ export function createQueueSchedulesWithTransport({
 
   const api: QueueScheduleController = {
     create: async (options) => {
-      assertCron(options.cron);
-      const task = await normalizeTask(options.task);
       const timezone = options.timezone ?? 'UTC';
+      assertCron(options.cron, timezone);
+      const task = await normalizeTask(options.task);
       const nextRunAt = nextScheduledTimestamp(options.cron, timezone);
       const schedule = await storage.schedules.create({
         id: `sched_${crypto.randomUUID()}`,
@@ -162,8 +163,8 @@ export function createQueueSchedulesWithTransport({
       if (!current) throw new Error(`Unknown queue schedule "${id}"`);
 
       const cron = options.cron ?? current.cron;
-      assertCron(cron);
       const timezone = options.timezone ?? current.timezone;
+      assertCron(cron, timezone);
       const task = options.task ? await normalizeTask(options.task) : undefined;
       const schedule = await storage.schedules.update(id, {
         ...options,
@@ -326,12 +327,23 @@ export function nextScheduledTimestamps(
   return dates;
 }
 
-export function assertCron(cron: string): void {
+export function assertCron(cron: string, timezone = 'UTC'): void {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) {
-    throw new Error('Queue schedules require 5-part cron expressions');
+    throw new InvalidScheduleError(
+      'Queue schedules require 5-part cron expressions',
+    );
   }
-  nextCronStep(cron, 'UTC', new Date());
+  try {
+    nextCronStep(cron, timezone, new Date());
+  } catch (err) {
+    throw new InvalidScheduleError(
+      timezone === 'UTC'
+        ? `Invalid cron expression "${cron}"`
+        : `Invalid cron expression "${cron}" or timezone "${timezone}"`,
+      { cause: err },
+    );
+  }
 }
 
 function nextCronStep(cron: string, timezone: string, from: Date): Date {

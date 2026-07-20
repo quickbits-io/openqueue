@@ -3,6 +3,7 @@ import { catalogEntryDefinition } from './catalog';
 import { composeDrains } from './compose';
 import { createEnqueuer, type Enqueuer } from './enqueuer';
 import { type NamespaceOptions, resolveNamespace } from './namespace';
+import { UnknownTaskError } from './request-errors';
 import { createRunsApi } from './runs';
 import {
   createQueueSchedulesWithTransport,
@@ -89,7 +90,10 @@ export function composeWorldRuntime(
     runs,
     catalog: {
       read: () => store.read(),
-      resolve: (id) => resolveTask(id),
+      // Catalog lookups report a miss as `undefined` (the `QueueCatalogStore`
+      // contract) so `POST /jobs` can answer `task_not_found`; only `trigger`
+      // stays strict and throws through `resolveTask` before enqueue.
+      resolve: (id) => store.resolve(id),
     },
     close: async () => {
       await schedules.close();
@@ -103,11 +107,7 @@ function resolveTaskFromStore(
 ): (id: string) => Promise<QueueCatalogEntry> {
   return async (id) => {
     const entry = await store.resolve(id);
-    if (!entry) {
-      throw new Error(
-        `Unknown task "${id}"; worker catalog has not been published`,
-      );
-    }
+    if (!entry) throw new UnknownTaskError(id);
     return entry;
   };
 }

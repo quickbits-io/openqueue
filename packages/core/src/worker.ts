@@ -14,13 +14,15 @@ import { withJobLogs } from './job-logs';
 import { consoleLogger } from './logger';
 import { buildSnapshot } from './snapshot';
 import { withRunContext } from './span-export';
-import { trigger } from './task';
+import { trigger as moduleTrigger } from './task';
 import type {
   ActiveTransportJob,
   ConsumeOptions,
   TransportConsumer,
 } from './transport/types';
 import type {
+  EnqueueOptions,
+  EnqueueResult,
   QueueDrain,
   QueueRunSnapshot,
   TaskContext,
@@ -29,10 +31,24 @@ import type {
 
 export type QueueConcurrency = Record<string, number>;
 
+/** `ctx.trigger` bound to a specific runtime's enqueue path. */
+type QueueTrigger = <I, O = unknown>(
+  target: string | TaskDefinition<I, O>,
+  input: I,
+  opts?: EnqueueOptions,
+) => Promise<EnqueueResult>;
+
 export interface WorkerConsumerOptions {
   drain?: QueueDrain;
   globalConcurrency?: number;
   queueConcurrency?: QueueConcurrency;
+  /**
+   * The runtime's own `trigger`, threaded into `ctx.trigger` so a job's
+   * enqueues land in this runtime's world — not whichever runtime last called
+   * the module-global `bindQueueRuntime`. Falls back to that global for direct
+   * (single-runtime) callers that don't pass it.
+   */
+  trigger?: QueueTrigger;
 }
 
 export interface WorkerGroup {
@@ -53,6 +69,7 @@ export function createWorkerConsumers<C extends TransportConsumer>(
   const drain = composeDrains(options.drain);
   const limiter = createLimiter(options.globalConcurrency);
   const groups = groupJobsByQueue(jobs, options.queueConcurrency);
+  const trigger = options.trigger ?? moduleTrigger;
 
   return groups.map(
     ({ queue: queueName, jobs: defs, concurrency, maxStalledCount }) => {
@@ -66,7 +83,9 @@ export function createWorkerConsumers<C extends TransportConsumer>(
           // Captured before the limiter so Dequeued → Started exposes time
           // spent waiting on global concurrency plus run setup.
           const dequeuedAt = Date.now();
-          return limiter(() => runJob(job, defByName, drain, dequeuedAt));
+          return limiter(() =>
+            runJob(job, defByName, drain, dequeuedAt, trigger),
+          );
         },
         onCompleted: async (job) => {
           const def = defByName.get(job.name);
@@ -158,6 +177,7 @@ async function runJob(
   defByName: Map<string, TaskDefinition>,
   drain: QueueDrain,
   dequeuedAt: number,
+  trigger: QueueTrigger,
 ): Promise<unknown> {
   const def = defByName.get(job.name);
   if (!def) {

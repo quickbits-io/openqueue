@@ -1,6 +1,9 @@
 import type { QueueTransport } from './transport/types';
 import type { QueueStorage } from './types';
 
+// Re-exported here (not just from the main index) so the edge-clean control
+// bundle can map them without importing the full `@openqueue/core` graph.
+export { InvalidScheduleError, UnknownTaskError } from './request-errors';
 export {
   filterRuns,
   filterSchedules,

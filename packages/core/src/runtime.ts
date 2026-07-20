@@ -103,6 +103,9 @@ export async function createQueueWorkerFromWorld(
 
   const consumers = createWorkerConsumers(workerTasks, transport, {
     drain: parts.drain,
+    // This runtime's own trigger, so `ctx.trigger` enqueues into this world
+    // rather than whichever runtime last called `bindQueueRuntime`.
+    trigger,
     globalConcurrency: options.globalConcurrency,
     queueConcurrency: options.queueConcurrency,
   });
