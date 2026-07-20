@@ -9,13 +9,13 @@ import {
   resolveNamespace,
   type WorldMigrationStep,
 } from '@openqueue/core';
-import { loadConfig, startWorkerApp } from '@openqueue/worker';
+import { loadConfig } from '@openqueue/worker';
+import { start, startFromSource } from './artifact-start';
 import { build } from './nitro-build';
 import {
   discoveryRoot,
   exportedValue,
   isTaskDiscovery,
-  loadDirectTasks,
   taskModules,
 } from './tasks';
 
@@ -30,9 +30,11 @@ try {
   } else if (command === 'dev') {
     await dev();
   } else if (command === 'dev-worker') {
-    await start({ preferManifest: false });
+    const { config, cwd } = await loadCliConfig();
+    await startFromSource(config, cwd, { direct: true });
   } else if (command === 'start') {
-    await start({ preferManifest: true });
+    const { config, cwd } = await loadCliConfig();
+    await start(config, cwd);
   } else if (command === 'build') {
     const { config, cwd, path } = await loadCliConfig();
     await build(config, cwd, path);
@@ -221,16 +223,6 @@ Then generate and run the migrations:
   bunx drizzle-kit migrate
 
 Docs: https://openqueue.dev/docs/persistence`);
-}
-
-async function start(options: { preferManifest: boolean }): Promise<void> {
-  const { config, cwd } = await loadCliConfig();
-  await startWorkerApp(config, {
-    cwd,
-    tasks: options.preferManifest
-      ? undefined
-      : await loadDirectTasks(config, cwd),
-  });
 }
 
 async function migrations(): Promise<void> {
@@ -589,7 +581,7 @@ Commands:
   add       Add a feature to the project (persistence)
   dev       Start the worker from task source files
   build     Compile the worker into a Nitro server artifact (.output)
-  start     Start the worker, preferring the generated manifest
+  start     Run the built artifact (.output), or boot from source if absent
   migrations  Print or check world migrations (print | status)
 `);
 }
