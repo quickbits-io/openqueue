@@ -821,6 +821,106 @@ describe('control routes — principal stamping', () => {
     });
     expect(captured?.deduplicationKey).toBe('nightly');
   });
+
+  it('is idempotent across read-modify-write: a resent echoed key neither double-scopes nor creates a second schedule', async () => {
+    // A dedupe-aware upsert store, mirroring the real schedule stores.
+    const byId = new Map<string, QueueSchedule>();
+    const byDedupe = new Map<string, string>();
+    let seq = 0;
+    const store = schedulesApi({
+      create: async (input) => {
+        const existingId = input.deduplicationKey
+          ? byDedupe.get(input.deduplicationKey)
+          : undefined;
+        const id = existingId ?? `s${(seq += 1)}`;
+        const schedule = queueSchedule({
+          id,
+          deduplicationKey: input.deduplicationKey,
+          meta: input.meta ?? {},
+        });
+        byId.set(id, schedule);
+        if (input.deduplicationKey) byDedupe.set(input.deduplicationKey, id);
+        return schedule;
+      },
+      retrieve: async (id) => {
+        const schedule = byId.get(id);
+        if (!schedule) throw new Error(`Unknown queue schedule "${id}"`);
+        return schedule;
+      },
+      update: async (id, input) => {
+        const current = byId.get(id);
+        if (!current) throw new Error(`Unknown queue schedule "${id}"`);
+        const schedule = queueSchedule({
+          id,
+          deduplicationKey: input.deduplicationKey ?? current.deduplicationKey,
+          meta: input.meta ?? current.meta,
+        });
+        byId.set(id, schedule);
+        if (schedule.deduplicationKey) {
+          byDedupe.set(schedule.deduplicationKey, id);
+        }
+        return schedule;
+      },
+    });
+    const options = makeOptions({ schedules: store });
+
+    // 1) Create with the raw key; the wire echoes the tenant-scoped key.
+    const created = await handlerFor(
+      options,
+      'post',
+      '/schedules',
+    )({
+      params: {},
+      query: {},
+      body: {
+        task: 'send-email',
+        cron: '* * * * *',
+        deduplicationKey: 'nightly',
+      },
+      principal: principal('t1'),
+    });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({
+      id: 's1',
+      deduplicationKey: 't:t1:nightly',
+    });
+
+    // 2) Read-modify-write PATCH resending the echoed key must not double-scope.
+    const patched = await handlerFor(
+      options,
+      'patch',
+      '/schedules/:id',
+    )({
+      params: { id: 's1' },
+      query: {},
+      body: { deduplicationKey: 't:t1:nightly' },
+      principal: principal('t1'),
+    });
+    expect(patched.status).toBe(200);
+    expect(patched.body).toMatchObject({ deduplicationKey: 't:t1:nightly' });
+
+    // 3) Re-create with the echoed key upserts the SAME schedule, not a second.
+    const recreated = await handlerFor(
+      options,
+      'post',
+      '/schedules',
+    )({
+      params: {},
+      query: {},
+      body: {
+        task: 'send-email',
+        cron: '* * * * *',
+        deduplicationKey: 't:t1:nightly',
+      },
+      principal: principal('t1'),
+    });
+    expect(recreated.body).toMatchObject({
+      id: 's1',
+      deduplicationKey: 't:t1:nightly',
+    });
+    expect(byId.size).toBe(1);
+    expect(byDedupe.size).toBe(1);
+  });
 });
 
 describe('control routes — ownership', () => {

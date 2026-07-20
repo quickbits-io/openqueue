@@ -52,6 +52,13 @@ export function canAccess(
  * tenant-scoped caller could guess another tenant's key and overwrite (and
  * re-own) their schedule before any `canAccess` check runs. Unscoped principals
  * (operators) keep the raw key.
+ *
+ * Idempotent: the scoped key is echoed back on the wire, so a read-modify-write
+ * that resends it must not double-scope (`t:t1:t:t1:foo`). A key already
+ * carrying *this* principal's own `t:<tenant>:` prefix is left as-is — a tenant
+ * that deliberately names a key `t:t1:foo` simply collapses onto the same
+ * schedule as scoping `foo`, which is harmless (same tenant). A key bearing
+ * *another* tenant's prefix is still re-scoped, preserving isolation.
  */
 export function scopeDedupeKey(
   principal: Principal | undefined,
@@ -67,7 +74,8 @@ export function scopeDedupeKey(
 ): string | undefined {
   const tenantId = principal?.tenantId;
   if (tenantId === undefined || key === undefined) return key;
-  return `t:${encodeURIComponent(tenantId)}:${key}`;
+  const prefix = `t:${encodeURIComponent(tenantId)}:`;
+  return key.startsWith(prefix) ? key : `${prefix}${key}`;
 }
 
 /**
