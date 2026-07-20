@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { BackoffOptions } from '@openqueue/core/types';
 import {
   type ActiveTransportJob,
@@ -65,6 +66,9 @@ interface ClaimedRow {
   // parser, so these arrive as strings once the store has run — coerce with toDate.
   created_at: Date | string;
   processed_on: Date | string;
+  // Fencing token stamped by this claim; settlement is scoped to it so a
+  // reclaimed (stalled) job's late settlement cannot clobber the new claimant.
+  claim_id: string;
 }
 
 interface HandleRow {
@@ -81,6 +85,7 @@ interface StalledRow {
   data: unknown;
   attempts: number;
   attempts_made: number;
+  processed_on: Date | string | null;
 }
 
 interface JobState {
@@ -191,11 +196,22 @@ export function createPostgresTransport(
     }
   }
 
-  async function deleteJob(queue: string, id: string): Promise<void> {
-    await sql`
+  // Settlement (delete/requeue/persistData) is fenced by the claim token: it only
+  // touches the row while it still bears the claim that produced `claimId`. A
+  // `false`/no-op means the visibility lease was lost and a peer re-claimed — the
+  // caller must not fire a terminal callback for a job it no longer owns.
+  async function deleteJob(
+    queue: string,
+    id: string,
+    claimId: string,
+  ): Promise<boolean> {
+    const deleted = await sql`
       delete from "openqueue"."jobs"
       where namespace = ${namespace} and queue = ${queue} and id = ${id}
+        and claim_id = ${claimId}
+      returning id
     `;
+    return deleted.length > 0;
   }
 
   async function requeue(
@@ -203,35 +219,43 @@ export function createPostgresTransport(
     id: string,
     attemptsMade: number,
     delayMs: number,
-  ): Promise<void> {
-    await sql`
+    claimId: string,
+  ): Promise<boolean> {
+    const requeued = await sql`
       update "openqueue"."jobs"
       set state = 'waiting',
           attempts_made = ${attemptsMade},
           run_at = now() + ${seconds(delayMs)},
           claimed_until = null
       where namespace = ${namespace} and queue = ${queue} and id = ${id}
+        and claim_id = ${claimId}
+      returning id
     `;
+    return requeued.length > 0;
   }
 
   async function persistData(
     queue: string,
     id: string,
     data: unknown,
+    claimId: string,
   ): Promise<void> {
     await sql`
       update "openqueue"."jobs"
       set data = ${jsonText(data)}::text::jsonb
       where namespace = ${namespace} and queue = ${queue} and id = ${id}
+        and claim_id = ${claimId}
     `;
   }
 
   async function claim(queue: string, limit: number): Promise<ClaimedRow[]> {
+    const claimId = randomUUID();
     return sql<ClaimedRow[]>`
       update "openqueue"."jobs" as j
       set state = 'active',
           claimed_until = now() + ${seconds(visibilityMs)},
-          processed_on = now()
+          processed_on = now(),
+          claim_id = ${claimId}
       where (j.namespace, j.queue, j.id) in (
         select c.namespace, c.queue, c.id
         from "openqueue"."jobs" as c
@@ -242,7 +266,7 @@ export function createPostgresTransport(
         for update skip locked
       )
       returning j.id, j.name, j.data, j.attempts, j.attempts_made,
-                j.backoff, j.created_at, j.processed_on
+                j.backoff, j.created_at, j.processed_on, j.claim_id
     `;
   }
 
@@ -269,7 +293,7 @@ export function createPostgresTransport(
           and stalled_count >= ${consumer.maxStalled}
         for update skip locked
       )
-      returning id, name, data, attempts, attempts_made
+      returning id, name, data, attempts, attempts_made, processed_on
     `;
     for (const row of failed) {
       const job = buildStalledJob(consumer.queue, row);
@@ -305,7 +329,7 @@ export function createPostgresTransport(
       },
       updateData: async (data) => {
         state.data = data;
-        await persistData(queue, row.id, data);
+        await persistData(queue, row.id, data, row.claim_id);
       },
       updateProgress: async () => undefined,
       log: async () => 0,
@@ -313,11 +337,20 @@ export function createPostgresTransport(
   }
 
   function buildStalledJob(queue: string, row: StalledRow): ActiveTransportJob {
+    // A stalled-out job is terminal: stamp `finishedOn` (and the last claim's
+    // `processedOn`) so its failed run persists a finish time and duration
+    // instead of looking unfinished in run history.
+    const now = Date.now();
     return {
       id: row.id,
       name: row.name,
       queueName: queue,
-      timestamp: Date.now(),
+      timestamp: now,
+      processedOn:
+        row.processed_on != null
+          ? toDate(row.processed_on).getTime()
+          : undefined,
+      finishedOn: now,
       opts: { attempts: row.attempts },
       data: row.data,
       attemptsMade: row.attempts_made,
@@ -366,24 +399,30 @@ export function createPostgresTransport(
 
     if (ok) {
       state.returnvalue = value;
-      await deleteJob(consumer.queue, row.id);
-      await runCallback(consumer, () => options.onCompleted(job));
+      // Only settle and report completion while we still own the claim; a lost
+      // lease means a peer re-claimed and will settle its own attempt.
+      if (await deleteJob(consumer.queue, row.id, row.claim_id)) {
+        await runCallback(consumer, () => options.onCompleted(job));
+      }
       return;
     }
 
     const final = options.isFinal(error);
     const willRetry = !final && state.attemptsMade < (row.attempts ?? 1);
-    if (willRetry) {
-      await requeue(
-        consumer.queue,
-        row.id,
-        state.attemptsMade,
-        retryDelay(row.backoff, state.attemptsMade),
+    const settled = willRetry
+      ? await requeue(
+          consumer.queue,
+          row.id,
+          state.attemptsMade,
+          retryDelay(row.backoff, state.attemptsMade),
+          row.claim_id,
+        )
+      : await deleteJob(consumer.queue, row.id, row.claim_id);
+    if (settled) {
+      await runCallback(consumer, () =>
+        options.onFailed(job, error, { final }),
       );
-    } else {
-      await deleteJob(consumer.queue, row.id);
     }
-    await runCallback(consumer, () => options.onFailed(job, error, { final }));
   }
 
   async function runLoop(consumer: PgConsumer): Promise<void> {

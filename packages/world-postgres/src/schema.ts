@@ -59,6 +59,9 @@ export const jobs = openqueue.table(
     state: text().default('waiting').notNull(),
     runAt: timestamp('run_at', { withTimezone: true }).defaultNow().notNull(),
     claimedUntil: timestamp('claimed_until', { withTimezone: true }),
+    // Fencing token stamped on each claim; settlement is scoped to it so a
+    // reclaimed job's stale settlement cannot clobber the new claimant's row.
+    claimId: text('claim_id'),
     stalledCount: integer('stalled_count').default(0).notNull(),
     seq: bigint({ mode: 'bigint' }).generatedAlwaysAsIdentity(),
     processedOn: timestamp('processed_on', { withTimezone: true }),

@@ -355,6 +355,88 @@ describe.runIf(hasDb)('world-postgres transport (adversarial)', () => {
     await transport.close();
   });
 
+  it('fences a lost-lease settlement so a reclaiming peer is not clobbered (no double terminal callback)', async () => {
+    const queue = 'fence';
+    const namespace = uniqueNamespace('fence');
+    // Heartbeat off, visibility short: worker A's claim expires mid-process and a
+    // peer B reclaims and settles the same id. A's late (stale) settlement must be
+    // fenced by its claim token — it must not delete B's active row nor fire a
+    // second terminal callback.
+    const transport = createPostgresTransport({
+      sql,
+      namespace,
+      poll: { intervalMs: 25 },
+      stall: { visibilityMs: 200, heartbeatMs: 1_000_000 },
+    });
+    let processStarts = 0;
+    let completions = 0;
+    let aProcessDone = false;
+    const errors: unknown[] = [];
+    let resolveStart = (): void => {};
+    const started = new Promise<void>((resolve) => {
+      resolveStart = resolve;
+    });
+
+    // A: claims first, loses its lease (process outlives visibility), completes late.
+    const a = transport.consume(
+      queue,
+      baseOptions({
+        concurrency: 1,
+        maxStalledCount: 5,
+        process: async () => {
+          processStarts += 1;
+          resolveStart();
+          await sleep(350);
+          aProcessDone = true;
+          return 'ok';
+        },
+        onCompleted: () => {
+          completions += 1;
+        },
+        onError: (err) => errors.push(err),
+      }),
+    );
+    await transport.enqueue(queue, { id: 'lease', name: 'work', data: {} });
+    await started;
+
+    // B: joins while A holds the job, reclaims after A's lease expires, settles fast.
+    const b = transport.consume(
+      queue,
+      baseOptions({
+        concurrency: 1,
+        maxStalledCount: 5,
+        process: async () => {
+          processStarts += 1;
+          await sleep(120);
+          return 'ok';
+        },
+        onCompleted: () => {
+          completions += 1;
+        },
+        onError: (err) => errors.push(err),
+      }),
+    );
+
+    await waitFor(() => aProcessDone && processStarts >= 2, 8000);
+    // Let A's fenced settlement land after B has already settled.
+    await sleep(400);
+
+    expect(errors).toEqual([]);
+    // Both workers executed the job (at-least-once under stall recovery)...
+    expect(processStarts).toBeGreaterThanOrEqual(2);
+    // ...but only the reclaiming peer's settlement counts: the stale one is fenced.
+    expect(completions).toBe(1);
+    const rows = await sql<{ n: number }[]>`
+      select count(*)::int as n from "openqueue"."jobs"
+      where namespace = ${namespace} and queue = ${queue} and id = 'lease'
+    `;
+    expect(rows[0]?.n).toBe(0);
+
+    await a.close();
+    await b.close();
+    await transport.close();
+  });
+
   it('never both removes and delivers a job racing remove() against a claim pass', async () => {
     const queue = 'remove-race';
     const namespace = uniqueNamespace('rmrace');

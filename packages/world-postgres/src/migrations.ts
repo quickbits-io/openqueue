@@ -162,4 +162,11 @@ CREATE INDEX "queue_schedules_next_run_at_idx" ON "openqueue"."schedules" USING 
 CREATE UNIQUE INDEX "queue_schedules_deduplication_key_idx" ON "openqueue"."schedules" USING btree ("deduplication_key") WHERE "openqueue"."schedules"."deduplication_key" IS NOT NULL;
 `,
   },
+  {
+    id: '0002_init',
+    checksum:
+      'a487f14278a33be4e659bd8392f4c8ed2739bad936cd716ed7028f592e8c7146',
+    sql: `ALTER TABLE "openqueue"."jobs" ADD COLUMN "claim_id" text;
+`,
+  },
 ];

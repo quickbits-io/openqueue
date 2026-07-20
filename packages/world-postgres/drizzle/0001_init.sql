@@ -1,0 +1,1 @@
+ALTER TABLE "openqueue"."jobs" ADD COLUMN "claim_id" text;

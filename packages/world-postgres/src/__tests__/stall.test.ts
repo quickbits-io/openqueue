@@ -99,6 +99,50 @@ describe.runIf(hasDb)('world-postgres stall recovery', () => {
     await transport.close();
   });
 
+  it('stamps a stalled-out failure with a finish time and duration so its run is not left unfinished', async () => {
+    const queue = 'stalled-finish';
+    // Already stalled once; its last claim (processed_on) is 10s ago. With
+    // maxStalledCount 1 the next pass fails it — the synthetic job must carry a
+    // finishedOn (and the last-claim processedOn) so the terminal run persists a
+    // finish time and duration rather than looking unfinished.
+    await sql`
+      insert into "openqueue"."jobs"
+        (namespace, queue, id, name, data, state, claimed_until, run_at,
+         stalled_count, processed_on)
+      values (${namespace}, ${queue}, 'finish', 'work', '{}'::jsonb, 'active',
+              now() - interval '5 seconds', now(), 1, now() - interval '10 seconds')
+    `;
+
+    const transport = createPostgresTransport({
+      sql,
+      namespace,
+      poll: { intervalMs: 50 },
+      stall: { visibilityMs: 300, heartbeatMs: 100_000 },
+    });
+    const failures: (ActiveTransportJob | undefined)[] = [];
+    const consumer = transport.consume(
+      queue,
+      baseOptions({
+        maxStalledCount: 1,
+        onFailed: (job) => {
+          failures.push(job);
+        },
+      }),
+    );
+
+    await waitFor(() => failures.length === 1);
+    const job = failures[0];
+    expect(Number.isFinite(job?.finishedOn ?? Number.NaN)).toBe(true);
+    expect(job?.finishedOn ?? 0).toBeGreaterThan(0);
+    // The last-claim processed_on flows through so buildSnapshot can derive a
+    // duration; finish must not precede start.
+    expect(Number.isFinite(job?.processedOn ?? Number.NaN)).toBe(true);
+    expect(job?.finishedOn ?? 0).toBeGreaterThanOrEqual(job?.processedOn ?? 0);
+
+    await consumer.close();
+    await transport.close();
+  });
+
   it('keeps heartbeating an in-flight job through a graceful close so a peer worker cannot steal it', async () => {
     const queue = 'drain-heartbeat';
     // Visibility far shorter than the job: without a heartbeat during the drain,
