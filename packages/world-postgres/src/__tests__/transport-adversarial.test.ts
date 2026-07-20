@@ -154,6 +154,56 @@ describe.runIf(hasDb)('world-postgres transport (adversarial)', () => {
     await transport.close();
   });
 
+  it('refreshes processed_on on each retry claim so a retry reports its own start, not the first attempt’s', async () => {
+    const queue = 'retry-processed';
+    const namespace = uniqueNamespace('retryproc');
+    const transport = createPostgresTransport({
+      sql,
+      namespace,
+      poll: { intervalMs: 25 },
+    });
+    const processedOns: number[] = [];
+    const errors: unknown[] = [];
+    let done = false;
+    const consumer = transport.consume(
+      queue,
+      baseOptions({
+        process: async (job) => {
+          processedOns.push(job.processedOn ?? Number.NaN);
+          if (job.attemptsMade === 0) throw new Error('retry');
+          return 'ok';
+        },
+        onCompleted: () => {
+          done = true;
+        },
+        onError: (err) => errors.push(err),
+      }),
+    );
+    // A ~300ms backoff separates the two attempts; a stale processed_on (carried
+    // from attempt 1) would make both claims report the same start time.
+    await transport.enqueue(queue, {
+      id: 'retry',
+      name: 'work',
+      data: {},
+      attempts: 2,
+      backoff: 300,
+    });
+
+    await waitFor(() => done, 8000);
+    expect(errors).toEqual([]);
+    expect(processedOns).toHaveLength(2);
+    expect(Number.isFinite(processedOns[0] ?? Number.NaN)).toBe(true);
+    expect(Number.isFinite(processedOns[1] ?? Number.NaN)).toBe(true);
+    // The retry claim's processed_on advanced by roughly the backoff — proof it
+    // was set to now() on the second claim, not preserved from the first.
+    expect(
+      (processedOns[1] ?? 0) - (processedOns[0] ?? 0),
+    ).toBeGreaterThanOrEqual(250);
+
+    await consumer.close();
+    await transport.close();
+  });
+
   it('keeps transport timestamps finite after the drizzle store disables the postgres.js parser', async () => {
     // Isolated client: constructing the store mutates the shared client's
     // timestamptz parser (returns strings), so give this probe its own client to

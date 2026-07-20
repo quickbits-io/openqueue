@@ -99,6 +99,63 @@ describe.runIf(hasDb)('world-postgres stall recovery', () => {
     await transport.close();
   });
 
+  it('keeps heartbeating an in-flight job through a graceful close so a peer worker cannot steal it', async () => {
+    const queue = 'drain-heartbeat';
+    // Visibility far shorter than the job: without a heartbeat during the drain,
+    // the claim would expire mid-close and a peer's stall pass could reclaim it.
+    const transport = createPostgresTransport({
+      sql,
+      namespace,
+      poll: { intervalMs: 25 },
+      stall: { visibilityMs: 200, heartbeatMs: 60 },
+    });
+
+    let processed = 0;
+    let completed = 0;
+    const errors: unknown[] = [];
+    let onStarted = (): void => {};
+    const started = new Promise<void>((resolve) => {
+      onStarted = resolve;
+    });
+    const options = baseOptions({
+      concurrency: 1,
+      maxStalledCount: 5,
+      process: async () => {
+        processed += 1;
+        onStarted();
+        await sleep(600);
+        return 'ok';
+      },
+      onCompleted: () => {
+        completed += 1;
+      },
+      onError: (err) => errors.push(err),
+    });
+
+    // Only A is consuming when the job lands, so A is guaranteed to claim it.
+    const a = transport.consume(queue, options);
+    await transport.enqueue(queue, { id: 'long', name: 'work', data: {} });
+    await started;
+    // B starts polling the same queue while A's job is in flight, then A closes.
+    const b = transport.consume(queue, options);
+    await a.close();
+
+    await waitFor(() => completed >= 1, 4000);
+    await sleep(300);
+
+    expect(errors).toEqual([]);
+    expect(processed).toBe(1);
+    expect(completed).toBe(1);
+    const rows = await sql`
+      select 1 from "openqueue"."jobs"
+      where namespace = ${namespace} and queue = ${queue} and id = 'long'
+    `;
+    expect(rows).toHaveLength(0);
+
+    await b.close();
+    await transport.close();
+  });
+
   it('keeps a long job alive via heartbeat so it is not stolen', async () => {
     const queue = 'heartbeat';
     const transport = createPostgresTransport({

@@ -231,7 +231,7 @@ export function createPostgresTransport(
       update "openqueue"."jobs" as j
       set state = 'active',
           claimed_until = now() + ${seconds(visibilityMs)},
-          processed_on = coalesce(j.processed_on, now())
+          processed_on = now()
       where (j.namespace, j.queue, j.id) in (
         select c.namespace, c.queue, c.id
         from "openqueue"."jobs" as c
@@ -449,10 +449,13 @@ export function createPostgresTransport(
 
   async function closeConsumer(consumer: PgConsumer): Promise<void> {
     consumer.closed = true;
-    clearInterval(consumer.heartbeat);
     consumer.wake();
     await consumer.loop.catch(() => undefined);
+    // Keep the heartbeat running through the drain: clearing it before in-flight
+    // jobs settle would let their `claimed_until` expire, so a peer worker's
+    // stall pass could reclaim (and duplicate) a row we're still executing.
     await Promise.allSettled([...consumer.inFlight.values()]);
+    clearInterval(consumer.heartbeat);
     consumers.delete(consumer);
   }
 
