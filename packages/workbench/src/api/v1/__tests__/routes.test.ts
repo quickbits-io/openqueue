@@ -13,8 +13,12 @@ import type {
   QueueSchedulesApi,
   UpdateQueueScheduleOptions,
 } from '@openqueue/core';
-import { UnsupportedCapabilityError } from '@openqueue/core/world';
-import { describe, expect, it } from 'vitest';
+import {
+  InvalidScheduleError,
+  UnknownTaskError,
+  UnsupportedCapabilityError,
+} from '@openqueue/core/world';
+import { describe, expect, it, vi } from 'vitest';
 import type { HttpMethod } from '../../handlers';
 import { buildControlApp } from '../app';
 import { buildControlRouteTable, type ControlApiOptions } from '../routes';
@@ -463,6 +467,92 @@ describe('control routes — schedules', () => {
     });
   });
 
+  it('maps a create-time invalid cron to 400 invalid_request', async () => {
+    const options = makeOptions({
+      schedules: schedulesApi({
+        create: async () => {
+          throw new InvalidScheduleError('Invalid cron expression "bad"');
+        },
+      }),
+    });
+    const result = await handlerFor(
+      options,
+      'post',
+      '/schedules',
+    )({
+      params: {},
+      query: {},
+      body: { task: 'send-email', cron: 'bad', deduplicationKey: 'dk' },
+    });
+    expect(result.status).toBe(400);
+    expect(result.body).toMatchObject({ error: { code: 'invalid_request' } });
+  });
+
+  it('maps a create-time unknown task to 404 task_not_found', async () => {
+    const options = makeOptions({
+      schedules: schedulesApi({
+        create: async () => {
+          throw new UnknownTaskError('ghost');
+        },
+      }),
+    });
+    const result = await handlerFor(
+      options,
+      'post',
+      '/schedules',
+    )({
+      params: {},
+      query: {},
+      body: { task: 'ghost', cron: '* * * * *', deduplicationKey: 'dk' },
+    });
+    expect(result.status).toBe(404);
+    expect(result.body).toMatchObject({ error: { code: 'task_not_found' } });
+  });
+
+  it('maps an update-time invalid cron to 400 invalid_request', async () => {
+    const options = makeOptions({
+      schedules: schedulesApi({
+        retrieve: async () => queueSchedule(),
+        update: async () => {
+          throw new InvalidScheduleError('Invalid cron expression "bad"');
+        },
+      }),
+    });
+    const result = await handlerFor(
+      options,
+      'patch',
+      '/schedules/:id',
+    )({
+      params: { id: 's1' },
+      query: {},
+      body: { cron: 'bad' },
+    });
+    expect(result.status).toBe(400);
+    expect(result.body).toMatchObject({ error: { code: 'invalid_request' } });
+  });
+
+  it('maps an update-time unknown task to 404 task_not_found', async () => {
+    const options = makeOptions({
+      schedules: schedulesApi({
+        retrieve: async () => queueSchedule(),
+        update: async () => {
+          throw new UnknownTaskError('ghost');
+        },
+      }),
+    });
+    const result = await handlerFor(
+      options,
+      'patch',
+      '/schedules/:id',
+    )({
+      params: { id: 's1' },
+      query: {},
+      body: { task: 'ghost' },
+    });
+    expect(result.status).toBe(404);
+    expect(result.body).toMatchObject({ error: { code: 'task_not_found' } });
+  });
+
   it('maps an UnsupportedCapabilityError from runNow to 501 unsupported_capability', async () => {
     const options = makeOptions({
       schedules: schedulesApi({
@@ -513,6 +603,19 @@ describe('control app auth', () => {
     const parsed = errorResponseSchema.parse(await res.json());
     expect(parsed.error.code).toBe('unauthorized');
     expect(parsed.error.message.length).toBeGreaterThan(0);
+  });
+
+  it('builds on a runtime without a process global (edge/serverless safe)', () => {
+    // The /control entry targets edge/serverless where `process` may be absent;
+    // reading NODE_ENV must not throw a ReferenceError before the app exists.
+    vi.stubGlobal('process', undefined);
+    try {
+      expect(() =>
+        buildControlApp(makeOptions({ token: 'secret' })),
+      ).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -663,6 +766,60 @@ describe('control routes — principal stamping', () => {
       principal: principal('t1'),
     });
     expect(captured?.meta?.enqueuedBy).toEqual(ownerStamp('t1'));
+  });
+
+  it('scopes the deduplication key under the tenant so cross-tenant upsert is impossible', async () => {
+    let captured: CreateQueueScheduleOptions | undefined;
+    const options = makeOptions({
+      schedules: schedulesApi({
+        create: async (input) => {
+          captured = input;
+          return queueSchedule();
+        },
+      }),
+    });
+    await handlerFor(
+      options,
+      'post',
+      '/schedules',
+    )({
+      params: {},
+      query: {},
+      body: {
+        task: 'send-email',
+        cron: '* * * * *',
+        deduplicationKey: 'nightly',
+      },
+      principal: principal('t1'),
+    });
+    expect(captured?.deduplicationKey).toBe('t:t1:nightly');
+  });
+
+  it('leaves the deduplication key raw for an unscoped (operator) principal', async () => {
+    let captured: CreateQueueScheduleOptions | undefined;
+    const options = makeOptions({
+      schedules: schedulesApi({
+        create: async (input) => {
+          captured = input;
+          return queueSchedule();
+        },
+      }),
+    });
+    await handlerFor(
+      options,
+      'post',
+      '/schedules',
+    )({
+      params: {},
+      query: {},
+      body: {
+        task: 'send-email',
+        cron: '* * * * *',
+        deduplicationKey: 'nightly',
+      },
+      principal: principal(),
+    });
+    expect(captured?.deduplicationKey).toBe('nightly');
   });
 });
 

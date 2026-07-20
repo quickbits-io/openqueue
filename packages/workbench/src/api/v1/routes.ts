@@ -15,12 +15,21 @@ import type {
   QueueSchedulesApi,
   TaskDefinition,
 } from '@openqueue/core';
-import { UnsupportedCapabilityError } from '@openqueue/core/world';
+import {
+  InvalidScheduleError,
+  UnknownTaskError,
+  UnsupportedCapabilityError,
+} from '@openqueue/core/world';
 import { ZodError, type z } from 'zod';
 import { errorMessage } from '../../util';
 import type { HandlerResult, RouteDef } from '../handlers';
 import type { ControlAuthConfig } from './auth';
-import { canAccess, scopeMetaFilter, stampMeta } from './principal';
+import {
+  canAccess,
+  scopeDedupeKey,
+  scopeMetaFilter,
+  stampMeta,
+} from './principal';
 import {
   controlError,
   toEnqueueOptions,
@@ -209,11 +218,23 @@ export function buildControlRouteTable(options: ControlApiOptions): RouteDef[] {
         const parsed = parseBody(input.body, createScheduleRequestSchema);
         if (!parsed.ok) return parsed.response;
         const meta = stampMeta(parsed.data.meta, input.principal);
-        const schedule = await runtime.schedules.create({
-          ...parsed.data,
-          meta,
-        });
-        return { status: 201, body: wireSchedule(schedule) };
+        const deduplicationKey = scopeDedupeKey(
+          input.principal,
+          parsed.data.deduplicationKey,
+        );
+        try {
+          const schedule = await runtime.schedules.create({
+            ...parsed.data,
+            deduplicationKey,
+            meta,
+          });
+          return { status: 201, body: wireSchedule(schedule) };
+        } catch (err) {
+          return (
+            scheduleValidationError(err) ??
+            controlError('internal', errorMessage(err))
+          );
+        }
       },
     },
     {
@@ -240,9 +261,14 @@ export function buildControlRouteTable(options: ControlApiOptions): RouteDef[] {
         const owned = await loadOwnedSchedule(runtime, id, input.principal);
         if (!owned.ok) return owned.response;
         const meta = reownMeta(parsed.data.meta, owned.schedule.meta);
+        const deduplicationKey = scopeDedupeKey(
+          input.principal,
+          parsed.data.deduplicationKey,
+        );
         try {
           const schedule = await runtime.schedules.update(id, {
             ...parsed.data,
+            deduplicationKey,
             meta,
           });
           return { status: 200, body: wireSchedule(schedule) };
@@ -414,9 +440,8 @@ function triggerError(err: unknown): HandlerResult {
 }
 
 function scheduleError(err: unknown, id: string): HandlerResult {
-  if (err instanceof UnsupportedCapabilityError) {
-    return controlError('unsupported_capability', err.message);
-  }
+  const validation = scheduleValidationError(err);
+  if (validation) return validation;
   if (
     err instanceof Error &&
     err.message.startsWith('Unknown queue schedule')
@@ -424,6 +449,24 @@ function scheduleError(err: unknown, id: string): HandlerResult {
     return controlError('schedule_not_found', `Schedule "${id}" not found`);
   }
   return controlError('internal', errorMessage(err));
+}
+
+/**
+ * Typed request/validation failures shared by the schedule create and update
+ * paths: a bad cron/timezone or an unknown task id are the caller's fault, not
+ * an internal error. Returns `undefined` when `err` is none of these.
+ */
+function scheduleValidationError(err: unknown): HandlerResult | undefined {
+  if (err instanceof UnsupportedCapabilityError) {
+    return controlError('unsupported_capability', err.message);
+  }
+  if (err instanceof UnknownTaskError) {
+    return controlError('task_not_found', err.message);
+  }
+  if (err instanceof InvalidScheduleError) {
+    return controlError('invalid_request', err.message);
+  }
+  return undefined;
 }
 
 function sortedUnique(values: string[]): string[] {

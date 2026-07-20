@@ -24,7 +24,7 @@ import { controlError } from './serialize';
 export function buildControlApp(options: ControlApiOptions): H3 {
   const app = new H3();
   const routes = buildControlRouteTable(options);
-  const auth = resolveControlAuth(options.auth, process.env.NODE_ENV);
+  const auth = resolveControlAuth(options.auth, readNodeEnv());
   const principals = new WeakMap<H3Event, Principal>();
 
   app.use(async (event, next) => {
@@ -95,6 +95,15 @@ async function dispatch(
     status: result.status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * `NODE_ENV`, read defensively: the `/control` entry is meant to run on
+ * edge/serverless runtimes where `process` may be undefined, so a bare
+ * `process.env.NODE_ENV` would throw a `ReferenceError` before the app is built.
+ */
+function readNodeEnv(): string | undefined {
+  return typeof process !== 'undefined' ? process.env.NODE_ENV : undefined;
 }
 
 function formatChallenge(challenge: AuthChallenge): string {

@@ -32,8 +32,11 @@ export { buildWorkbenchApp } from './server/h3-app';
  * Uses Redis queue discovery when `redis` is provided without explicit queues.
  */
 export async function createWorkbenchApp(options: WorkbenchOptions | Queue[]) {
+  // An explicit `queues: []` is a valid degraded state (a non-BullMQ world with
+  // no queues), so only fall back to Redis discovery when `queues` is wholly
+  // absent — checking `.length` would send `[]` down the redis-required path.
   const core =
-    Array.isArray(options) || options.queues?.length
+    Array.isArray(options) || options.queues !== undefined
       ? new WorkbenchCore(options)
       : await WorkbenchCore.fromOptions(options);
   const { buildWorkbenchApp } = await import('./server/h3-app');

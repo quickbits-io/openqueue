@@ -47,6 +47,30 @@ export function canAccess(
 }
 
 /**
+ * Namespace a caller-supplied schedule deduplication key under the caller's
+ * tenant. Schedule stores treat a duplicate key as an upsert, so without this a
+ * tenant-scoped caller could guess another tenant's key and overwrite (and
+ * re-own) their schedule before any `canAccess` check runs. Unscoped principals
+ * (operators) keep the raw key.
+ */
+export function scopeDedupeKey(
+  principal: Principal | undefined,
+  key: string,
+): string;
+export function scopeDedupeKey(
+  principal: Principal | undefined,
+  key: string | undefined,
+): string | undefined;
+export function scopeDedupeKey(
+  principal: Principal | undefined,
+  key: string | undefined,
+): string | undefined {
+  const tenantId = principal?.tenantId;
+  if (tenantId === undefined || key === undefined) return key;
+  return `t:${encodeURIComponent(tenantId)}:${key}`;
+}
+
+/**
  * Inject/merge `{ enqueuedBy: { tenantId } }` into a deep meta filter when the
  * caller is tenant-scoped, forcing their own `tenantId` so they cannot widen
  * the query to another tenant.
