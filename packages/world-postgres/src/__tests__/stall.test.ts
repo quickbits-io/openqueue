@@ -200,6 +200,68 @@ describe.runIf(hasDb)('world-postgres stall recovery', () => {
     await transport.close();
   });
 
+  it("does not let a lost-lease worker's heartbeat extend a row a peer re-claimed", async () => {
+    const queue = 'heartbeat-fence';
+    // A long visibility so A's own claim would not naturally lapse, and a fast
+    // heartbeat so A keeps pinging. Small poll interval so A's stall pass runs
+    // frequently once the simulated peer's short lease expires.
+    const transport = createPostgresTransport({
+      sql,
+      namespace,
+      poll: { intervalMs: 25 },
+      stall: { visibilityMs: 5000, heartbeatMs: 40 },
+    });
+
+    let onStarted = (): void => {};
+    const started = new Promise<void>((resolve) => {
+      onStarted = resolve;
+    });
+    const a = transport.consume(
+      queue,
+      baseOptions({
+        concurrency: 1,
+        maxStalledCount: 5,
+        process: async () => {
+          onStarted();
+          await sleep(1500);
+          return 'ok';
+        },
+      }),
+    );
+
+    await transport.enqueue(queue, { id: 'reclaimed', name: 'work', data: {} });
+    await started;
+    // Simulate a peer reclaiming the row: rotate its claim_id and give it a short
+    // lease. A still holds the id in-flight under the OLD token. A heartbeat fenced
+    // by the old token must not touch this row, so the short lease genuinely
+    // expires and A's own stall pass recovers the row back to waiting. Without the
+    // fence, A's heartbeat keeps extending claimed_until and the row stays active.
+    await sql`
+      update "openqueue"."jobs"
+      set claim_id = 'peer-token', claimed_until = now() + interval '0.2 seconds',
+          stalled_count = 0
+      where namespace = ${namespace} and queue = ${queue} and id = 'reclaimed'
+    `;
+
+    // Poll until the peer's short lease expires and A's fenced heartbeat has let
+    // the stall pass recover the row. Without the fence A holds it 'active'.
+    let state = 'active';
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline) {
+      const [row] = await sql<{ state: string }[]>`
+        select state from "openqueue"."jobs"
+        where namespace = ${namespace} and queue = ${queue} and id = 'reclaimed'
+      `;
+      state = row?.state ?? 'missing';
+      if (state === 'waiting') break;
+      await sleep(25);
+    }
+    expect(state).toBe('waiting');
+
+    await a.close();
+    await transport.close();
+  });
+
   it('keeps a long job alive via heartbeat so it is not stolen', async () => {
     const queue = 'heartbeat';
     const transport = createPostgresTransport({

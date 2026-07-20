@@ -95,12 +95,19 @@ interface JobState {
   finishedOn?: number;
 }
 
+interface InFlightJob {
+  // The claim token the row was stamped with when this worker claimed it. Kept
+  // per in-flight job so the heartbeat only extends rows this worker still owns.
+  claimId: string;
+  promise: Promise<void>;
+}
+
 interface PgConsumer {
   queue: string;
   options: ConsumeOptions;
   concurrency: number;
   maxStalled: number;
-  inFlight: Map<string, Promise<void>>;
+  inFlight: Map<string, InFlightJob>;
   closed: boolean;
   wake: () => void;
   heartbeat: ReturnType<typeof setInterval>;
@@ -273,9 +280,13 @@ export function createPostgresTransport(
   async function stallPass(consumer: PgConsumer): Promise<void> {
     // Recover recoverable stalls back to waiting (attempts_made unchanged — a
     // stall is not a failed attempt); SKIP LOCKED keeps two consumers off one row.
+    // Clearing claim_id drops the recovered row out of its old claim's fence, so
+    // the lost-lease worker's late settlement (deleteJob/requeue by that token)
+    // no longer matches the waiting row it was about to be retried on.
     await sql`
       update "openqueue"."jobs"
-      set state = 'waiting', stalled_count = stalled_count + 1, claimed_until = null
+      set state = 'waiting', stalled_count = stalled_count + 1,
+          claimed_until = null, claim_id = null
       where (namespace, queue, id) in (
         select namespace, queue, id from "openqueue"."jobs"
         where namespace = ${namespace} and queue = ${consumer.queue}
@@ -374,7 +385,7 @@ export function createPostgresTransport(
         consumer.inFlight.delete(row.id);
         consumer.wake();
       });
-    consumer.inFlight.set(row.id, promise);
+    consumer.inFlight.set(row.id, { claimId: row.claim_id, promise });
   }
 
   async function processAndSettle(
@@ -472,14 +483,17 @@ export function createPostgresTransport(
   }
 
   async function heartbeat(consumer: PgConsumer): Promise<void> {
-    const ids = [...consumer.inFlight.keys()];
-    if (ids.length === 0) return;
+    // Fence the heartbeat by the claim tokens this worker still holds. Matching by
+    // id alone would let a lost-lease worker extend a row a peer has since
+    // re-claimed (rotating claim_id), masking that peer's own stall detection.
+    const claimIds = [...consumer.inFlight.values()].map((job) => job.claimId);
+    if (claimIds.length === 0) return;
     try {
       await sql`
         update "openqueue"."jobs"
         set claimed_until = now() + ${seconds(visibilityMs)}
         where namespace = ${namespace} and queue = ${consumer.queue}
-          and state = 'active' and id = any(${sql.array(ids)})
+          and state = 'active' and claim_id = any(${sql.array(claimIds)})
       `;
     } catch (err) {
       runOnError(consumer, err);
@@ -493,7 +507,9 @@ export function createPostgresTransport(
     // Keep the heartbeat running through the drain: clearing it before in-flight
     // jobs settle would let their `claimed_until` expire, so a peer worker's
     // stall pass could reclaim (and duplicate) a row we're still executing.
-    await Promise.allSettled([...consumer.inFlight.values()]);
+    await Promise.allSettled(
+      [...consumer.inFlight.values()].map((job) => job.promise),
+    );
     clearInterval(consumer.heartbeat);
     consumers.delete(consumer);
   }

@@ -300,13 +300,16 @@ describe.runIf(hasDb)('world-postgres transport (adversarial)', () => {
     }
   });
 
-  it('settles exactly once at the claim-expiry boundary (no double onCompleted/onFailed)', async () => {
+  it('fences a lost-lease completion at the stall-recovery boundary, before any reclaim (no stale settlement)', async () => {
     const queue = 'boundary';
     const namespace = uniqueNamespace('boundary');
-    // Heartbeat off (far in the future), process outlives the visibility window:
-    // the stall pass recovers the row to waiting while the original attempt is
-    // still in flight. inFlight accounting must keep concurrency=1 from
-    // re-claiming, so settlement still fires exactly one terminal callback.
+    // Heartbeat off (far in the future), process (320ms) outlives the visibility
+    // window (150ms): the stall pass recovers the row to waiting WHILE the original
+    // attempt is still in flight — the settle-after-stall, before-reclaim window.
+    // Clearing the claim token on recovery must fence the attempt's late deleteJob:
+    // a lost-lease worker cannot complete a job that was recovered for retry.
+    // maxStalledCount 1 → the next stall fails it (final), so the correct terminal
+    // outcome is exactly one failure and zero completions (never a double settle).
     const transport = createPostgresTransport({
       sql,
       namespace,
@@ -321,7 +324,7 @@ describe.runIf(hasDb)('world-postgres transport (adversarial)', () => {
       queue,
       baseOptions({
         concurrency: 1,
-        maxStalledCount: 5,
+        maxStalledCount: 1,
         process: async () => {
           processCount += 1;
           await sleep(320);
@@ -338,13 +341,16 @@ describe.runIf(hasDb)('world-postgres transport (adversarial)', () => {
     );
 
     await transport.enqueue(queue, { id: 'edge', name: 'work', data: {} });
-    await waitFor(() => completed >= 1, 5000);
+    await waitFor(() => failed >= 1, 8000);
+    // Give any (fenced) late completion a chance to wrongly settle the row.
     await sleep(400);
 
     expect(errors).toEqual([]);
-    expect(processCount).toBe(1);
-    expect(completed).toBe(1);
-    expect(failed).toBe(0);
+    // The lost-lease attempt ran, but its stale completion never settled the
+    // recovered row: the job reaches its proper stalled-out failure exactly once.
+    expect(processCount).toBeGreaterThanOrEqual(1);
+    expect(completed).toBe(0);
+    expect(failed).toBe(1);
     const rows = await sql`
       select 1 from "openqueue"."jobs"
       where namespace = ${namespace} and queue = ${queue} and id = 'edge'
