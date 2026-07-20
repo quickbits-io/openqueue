@@ -21,6 +21,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import type { HttpMethod } from '../../handlers';
 import { buildControlApp } from '../app';
+import { scopeDedupeKey, scopeEnqueueOptions } from '../principal';
 import { buildControlRouteTable, type ControlApiOptions } from '../routes';
 import { toRunListOptions } from '../serialize';
 
@@ -1026,6 +1027,46 @@ describe('control routes — principal stamping', () => {
     });
     expect(byId.size).toBe(1);
     expect(byDedupe.size).toBe(1);
+  });
+});
+
+describe('tenant scope token collision-resistance', () => {
+  it('does not let a dotted tenant id forge the scope delimiter (no cross-tenant collision)', () => {
+    // encodeURIComponent leaves `.` unescaped, so an unescaped tenant segment
+    // could collide: tenant `a` + key `b.secret` and tenant `a.b` + key `secret`
+    // must scope to DIFFERENT tokens across all three surfaces.
+    const dedupeA = scopeDedupeKey(principal('a'), 'b.secret');
+    const dedupeAB = scopeDedupeKey(principal('a.b'), 'secret');
+    expect(dedupeA).not.toBe(dedupeAB);
+
+    const idsA = scopeEnqueueOptions(principal('a'), {
+      runId: 'b.secret',
+      jobId: 'b.secret',
+    });
+    const idsAB = scopeEnqueueOptions(principal('a.b'), {
+      runId: 'secret',
+      jobId: 'secret',
+    });
+    expect(idsA?.runId).not.toBe(idsAB?.runId);
+    expect(idsA?.jobId).not.toBe(idsAB?.jobId);
+    // Still a BullMQ-safe custom job id (no `:`).
+    expect(idsA?.jobId).not.toContain(':');
+    expect(idsAB?.jobId).not.toContain(':');
+  });
+
+  it('stays idempotent for a tenant id containing dots (echo → resend does not double-scope)', () => {
+    const scoped = scopeDedupeKey(principal('acme.eu'), 'nightly');
+    // The dot in the tenant id is escaped, so the prefix is unambiguous.
+    expect(scoped).toBe('t.acme%2Eeu.nightly');
+    // Resending the echoed key must not re-prefix it.
+    expect(scopeDedupeKey(principal('acme.eu'), scoped)).toBe(scoped);
+
+    const ids = scopeEnqueueOptions(principal('acme.eu'), {
+      runId: 't.acme%2Eeu.r1',
+      jobId: 't.acme%2Eeu.j1',
+    });
+    expect(ids?.runId).toBe('t.acme%2Eeu.r1');
+    expect(ids?.jobId).toBe('t.acme%2Eeu.j1');
   });
 });
 

@@ -108,9 +108,15 @@ export function scopeEnqueueOptions(
  * prefix is left as-is so a resend (read-modify-write) does not double-scope. The
  * `.` separator (not `:`) keeps the prefix valid as a BullMQ custom job id, which
  * rejects `:` — so a tenant-scoped `runId`/`jobId` reaches the queue intact.
+ *
+ * `encodeURIComponent` leaves `.` unescaped, so the tenant segment must escape its
+ * own dots (`%2E`) or the delimiter is forgeable: tenant `a` + key `b.x` and
+ * tenant `a.b` + key `x` would both scope to `t.a.b.x`, colliding across tenants.
+ * Escaping makes the prefix injective in `tenantId` (`%` is BullMQ-safe), and the
+ * idempotency check reuses the same computed prefix so it stays consistent.
  */
 function scopeToken(tenantId: string, value: string): string {
-  const prefix = `t.${encodeURIComponent(tenantId)}.`;
+  const prefix = `t.${encodeURIComponent(tenantId).replace(/\./g, '%2E')}.`;
   return value.startsWith(prefix) ? value : `${prefix}${value}`;
 }
 
