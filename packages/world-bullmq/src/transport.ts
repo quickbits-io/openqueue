@@ -75,6 +75,7 @@ export function createBullmqTransport(
     options.producer) as unknown as ConnectionOptions;
 
   const queues = new Map<string, Queue>();
+  const consumers = new Set<BullmqConsumer>();
   let flowProducer: FlowProducer | null = null;
 
   function queue(name: string): Queue {
@@ -128,9 +129,31 @@ export function createBullmqTransport(
     },
     getJob: async (name, id) => (await queue(name).getJob(id)) ?? undefined,
     listDelayed: (name) => queue(name).getDelayed(0, -1),
-    consume: (name, options) =>
-      createBullmqConsumer(name, options, workerConnection, prefix),
+    consume: (name, options) => {
+      const consumer = createBullmqConsumer(
+        name,
+        options,
+        workerConnection,
+        prefix,
+      );
+      consumers.add(consumer);
+      // Wrap close so an individually-closed consumer drops out of the set the
+      // transport drains, avoiding a redundant close() from transport.close().
+      return {
+        worker: consumer.worker,
+        close: async () => {
+          consumers.delete(consumer);
+          await consumer.close();
+        },
+      };
+    },
     close: async () => {
+      // Drain the workers this transport spawned before tearing down producers:
+      // Worker.close() stops intake and waits for in-flight jobs, and BullMQ
+      // leaves caller-injected (shared) connections open — so this never closes
+      // the producer/consumer Redis clients the caller owns.
+      await Promise.all(Array.from(consumers).map((c) => c.close()));
+      consumers.clear();
       await Promise.all(Array.from(queues.values()).map((q) => q.close()));
       await flowProducer?.close();
     },
