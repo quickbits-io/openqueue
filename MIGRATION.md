@@ -113,7 +113,9 @@ raw BullMQ `Queue`s).
   and `transportJobId` (≡ `jobId`) fields are gone. `QueueRun.transportJobId`
   (on run records) stays.
 - **`ttl` is removed** from `EnqueueOptions` and task definitions — it was a
-  silent no-op on every transport. Use a task `timeout` for duration limits.
+  silent no-op on every transport, so there is nothing to migrate. If you need a
+  run-duration limit, enforce it in the handler (e.g. `AbortSignal.timeout`
+  around external calls).
 - `WorkerConfig` / `TelemetryConfig` / `defineWorkerConfig` are deleted (dead
   scaffolding; OTel wires through your tracer provider).
 

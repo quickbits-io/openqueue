@@ -95,8 +95,9 @@ const client = createClient({ host: 'https://worker.example.com' });
   `transportJobId` fields are gone. `runId` is the durable inspect handle;
   `jobId` is the transport handle. (`QueueRun.transportJobId` stays.)
 - **`ttl` is removed** from `EnqueueOptions` and task definitions. It was a silent
-  no-op on every transport — a typed feature that did nothing. Use a task
-  `timeout` for run-duration limits.
+  no-op on every transport — a typed feature that did nothing — so there is
+  nothing to migrate. For run-duration limits, enforce them in the handler
+  (e.g. `AbortSignal.timeout` around external calls).
 - **`storage` is flattened.** `storage: { adapter: postgresAdapter(...) }` becomes
   `storage: postgresAdapter(...)`.
 - **`QueueConfig` collapsed into `OpenQueueConfig`.** The alias is gone; import
