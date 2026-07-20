@@ -260,6 +260,39 @@ describe('local transport', () => {
     expect(order).toEqual(['parent']);
   });
 
+  it('refreshes processedOn on each retry so a retry reports its own start, not attempt 1', async () => {
+    const transport = make();
+    const processedOns: number[] = [];
+    const completed = deferred<void>();
+    consume(transport, 'q', {
+      process: async (job) => {
+        processedOns.push(job.processedOn ?? Number.NaN);
+        if (job.attemptsMade === 0) throw new Error('retry');
+      },
+      onCompleted: () => completed.resolve(),
+    });
+
+    await transport.enqueue(
+      'q',
+      spec({
+        id: 'r',
+        name: 'x',
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 200 },
+      }),
+    );
+
+    await completed.promise;
+    expect(processedOns).toHaveLength(2);
+    expect(Number.isFinite(processedOns[0] ?? Number.NaN)).toBe(true);
+    expect(Number.isFinite(processedOns[1] ?? Number.NaN)).toBe(true);
+    // Attempt 2's processedOn advanced by ~the backoff — stamped per attempt,
+    // not preserved from attempt 1 (which would make the gap ~0).
+    expect(
+      (processedOns[1] ?? 0) - (processedOns[0] ?? 0),
+    ).toBeGreaterThanOrEqual(150);
+  });
+
   it('spaces retries with exponential backoff', async () => {
     const transport = make();
     const gaps: number[] = [];

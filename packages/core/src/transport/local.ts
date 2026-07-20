@@ -242,7 +242,10 @@ export function createLocalTransport(): QueueTransport {
   ): Promise<void> {
     const options = consumer.options;
     const job = activeJob(record);
-    if (record.processedOn === undefined) record.processedOn = Date.now();
+    // Stamp the start of every attempt, not just the first — a retry's
+    // startedAt/duration must reflect the current attempt, not attempt 1 plus
+    // its backoff. Matches the BullMQ/postgres per-attempt processedOn.
+    record.processedOn = Date.now();
 
     let ok = false;
     let value: unknown;
