@@ -76,11 +76,9 @@ export {
 export { isTerminalRunStatus } from './runs';
 export type {
   CreateQueueWorkerOptions,
-  QueueClient,
-  QueueClientOptions,
   QueueWorkerRuntime,
 } from './runtime';
-export { createQueueClient, createQueueWorker } from './runtime';
+export { createQueueWorker } from './runtime';
 export type { QueueScheduleController } from './schedules';
 export {
   assertCron,

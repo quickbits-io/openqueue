@@ -12,7 +12,6 @@ import type {
   EnqueueOptions,
   EnqueueResult,
   QueueCatalogEntry,
-  QueueCatalogStore,
   QueueDrain,
   QueueRunsApi,
   QueueSchedulesApi,
@@ -21,25 +20,6 @@ import type {
 } from './types';
 import { createWorkerConsumers, type QueueConcurrency } from './worker';
 import { type OpenQueueWorld, validateWorld, type WorldFactory } from './world';
-
-export interface QueueClientOptions extends NamespaceOptions {
-  world: WorldFactory;
-  drains?: QueueDrain[];
-}
-
-export interface QueueClient {
-  catalog: Pick<QueueCatalogStore, 'read' | 'resolve'>;
-  trigger<I, O = unknown>(
-    id: string | TaskDefinition<I, O>,
-    input: I,
-    opts?: EnqueueOptions,
-  ): Promise<EnqueueResult>;
-  schedules: QueueSchedulesApi;
-  runs: QueueRunsApi;
-  spans?: QueueSpanStore;
-  alerts: AlertStore;
-  close(): Promise<void>;
-}
 
 export interface CreateQueueWorkerOptions extends NamespaceOptions {
   world: WorldFactory;
@@ -69,54 +49,13 @@ export interface QueueWorkerRuntime {
   consumers: readonly TransportConsumer[];
 }
 
-/** Shared wiring options for the world-composed runtime factories. */
-export interface FromWorldOptions extends NamespaceOptions {
+export interface WorkerFromWorldOptions extends NamespaceOptions {
+  tasks: TaskDefinition[];
   drains?: Array<QueueDrain | false | null | undefined>;
   /** Ownership cleanup (e.g. a caller-owned Redis connection) run last. */
   onClose?: () => Promise<void>;
-}
-
-export interface WorkerFromWorldOptions extends FromWorldOptions {
-  tasks: TaskDefinition[];
   globalConcurrency?: number;
   queueConcurrency?: QueueConcurrency;
-}
-
-export async function createQueueClient(
-  options: QueueClientOptions,
-): Promise<QueueClient> {
-  const namespace = resolveNamespace(options);
-  const world = validateWorld(
-    await options.world({ namespace: namespace.namespace }),
-  );
-  return createQueueClientFromWorld(world, {
-    drains: options.drains,
-    ...namespace,
-  });
-}
-
-export function createQueueClientFromWorld(
-  world: OpenQueueWorld,
-  options: FromWorldOptions = {},
-): QueueClient {
-  const parts = composeWorldRuntime(world, options);
-  configureEnqueueTransport({ transport: world.transport, drain: parts.drain });
-
-  const client: QueueClient = {
-    catalog: parts.catalog,
-    trigger: parts.trigger,
-    schedules: parts.schedules,
-    runs: parts.runs,
-    spans: world.store.spans,
-    alerts: world.store.alerts,
-    close: async () => {
-      await parts.close();
-      await options.onClose?.();
-    },
-  };
-
-  bindQueueRuntime(client);
-  return client;
 }
 
 export async function createQueueWorker(

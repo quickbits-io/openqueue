@@ -13,13 +13,6 @@ export {
   OpenQueueClientError,
   type TokenValue,
 } from '@openqueue/client';
-export type {
-  QueueClient,
-  QueueClientOptions,
-  QueueRunPollOptions,
-  QueueRunsApi,
-} from '@openqueue/core';
-export { createQueueClient } from '@openqueue/core';
 
 /**
  * Create an HTTP client for a deployed worker and bind it as the process task

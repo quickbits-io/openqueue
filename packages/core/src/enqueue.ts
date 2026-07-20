@@ -45,7 +45,7 @@ export function configureEnqueueTransport(opts: {
 function assertEnqueuer(): Enqueuer {
   if (!defaultEnqueuer) {
     throw new Error(
-      '@openqueue/sdk: enqueue() called before the transport was configured. Boot a worker or client (or bind an HTTP client) at process start.',
+      '@openqueue/sdk: enqueue() called before the transport was configured. Boot a worker, or bind an HTTP client via @openqueue/sdk/client.',
     );
   }
   return defaultEnqueuer;

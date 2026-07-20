@@ -1,9 +1,5 @@
-import type {
-  EnqueueResult,
-  QueueClient,
-  QueueRun,
-  QueueSchedule,
-} from '@openqueue/core';
+import type { EnqueueResult, QueueRun, QueueSchedule } from '@openqueue/core';
+import type { ControlRuntime } from '@openqueue/core/control';
 import { expect, it } from 'vitest';
 import { createClient } from '../client';
 import type * as local from '../types';
@@ -20,9 +16,7 @@ const scheduleParity: MutuallyAssignable<QueueSchedule, local.QueueSchedule> =
 const enqueueParity: MutuallyAssignable<EnqueueResult, local.EnqueueResult> =
   true;
 
-it('satisfies the core QueueClient contract minus alerts/spans', () => {
-  const client: Omit<QueueClient, 'alerts' | 'spans'> = createClient({
-    host: 'http://x',
-  });
+it('satisfies the core ControlRuntime contract', () => {
+  const client: ControlRuntime = createClient({ host: 'http://x' });
   expect(client && runParity && scheduleParity && enqueueParity).toBeTruthy();
 });

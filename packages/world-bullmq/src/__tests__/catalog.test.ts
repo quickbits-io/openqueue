@@ -1,8 +1,5 @@
-import {
-  createQueueClient,
-  task as defineTask,
-  taskCatalogEntry,
-} from '@openqueue/core';
+import { task as defineTask, taskCatalogEntry } from '@openqueue/core';
+import { createControlRuntime } from '@openqueue/core/control';
 import type { TaskDefinition } from '@openqueue/core/types';
 import type { Redis } from 'ioredis';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -226,15 +223,13 @@ describe('queue catalog', () => {
     );
   });
 
-  it('producer client resolves task id routing from the catalog', async () => {
+  it('producer runtime resolves task id routing from the catalog', async () => {
     const redis = redisMock();
     await publishQueueCatalog(redis, [
       job({ name: 'process-document', queue: 'documents', attempts: 2 }),
     ]);
 
-    const client = await createQueueClient({
-      world: worldBullmq({ producer: redis }),
-    });
+    const client = await createControlRuntime(worldBullmq({ producer: redis }));
     const result = await client.trigger(
       'process-document',
       { documentId: 'doc-1' },
@@ -299,7 +294,7 @@ describe('queue catalog', () => {
     });
   });
 
-  it('producer client falls back to the durable storage catalog', async () => {
+  it('producer runtime falls back to the durable storage catalog', async () => {
     const redis = redisMock();
     const storage = memoryStorage();
     await storage.publish([
@@ -312,9 +307,9 @@ describe('queue catalog', () => {
       ),
     ]);
 
-    const client = await createQueueClient({
-      world: worldBullmq({ producer: redis, storage }),
-    });
+    const client = await createControlRuntime(
+      worldBullmq({ producer: redis, storage }),
+    );
     await client.trigger(
       'export-transactions',
       { accountId: 'acct-1' },
