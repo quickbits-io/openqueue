@@ -167,14 +167,30 @@ export function createBullmqTransport(
       // Drain the workers this transport spawned before tearing down producers:
       // Worker.close() stops intake and waits for in-flight jobs, and BullMQ
       // leaves caller-injected (shared) connections open — so this never closes
-      // the producer/consumer Redis clients the caller owns.
-      await Promise.all(Array.from(consumers).map((c) => c.close()));
+      // the producer/consumer Redis clients the caller owns. Settle each phase
+      // so one rejected close can't strand the Redis handles the later phases
+      // own; rethrow the first failure only after everything is torn down.
+      const results: PromiseSettledResult<unknown>[] = [];
+      results.push(
+        ...(await Promise.allSettled(
+          Array.from(consumers).map((c) => c.close()),
+        )),
+      );
       consumers.clear();
-      await Promise.all(Array.from(queues.values()).map((q) => q.close()));
-      await flowProducer?.close();
+      results.push(
+        ...(await Promise.allSettled(
+          Array.from(queues.values()).map((q) => q.close()),
+        )),
+      );
+      results.push(...(await Promise.allSettled([flowProducer?.close()])));
       // Quit only the blocking connection this transport spawned; injected
       // producer/consumer clients belong to the caller and stay open.
       await ownedConsumer?.quit().catch(() => undefined);
+      const failure = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      );
+      if (failure) throw failure.reason;
     },
   };
 }
