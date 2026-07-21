@@ -68,6 +68,17 @@ function memoryScheduleStore(): QueueScheduleStore {
   const dedupe = new Map<string, string>();
 
   function write(schedule: QueueSchedule): void {
+    // Drop the previous dedupe mapping when a schedule's key changes (or is
+    // cleared) so a later create with the old key can't still patch this
+    // schedule — matching the Redis/Postgres stores, where the key lives on the
+    // row rather than in a side map.
+    const prev = schedules.get(schedule.id);
+    if (
+      prev?.deduplicationKey &&
+      prev.deduplicationKey !== schedule.deduplicationKey
+    ) {
+      dedupe.delete(prev.deduplicationKey);
+    }
     schedules.set(schedule.id, schedule);
     if (schedule.deduplicationKey) {
       dedupe.set(schedule.deduplicationKey, schedule.id);
