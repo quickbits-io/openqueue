@@ -42,6 +42,29 @@ const failedRule: AlertRule = {
   updatedAt: 0,
 };
 
+describe('AlertManager store ownership on close', () => {
+  it('leaves an injected (world-owned) alert store open', async () => {
+    let closed = false;
+    class WorldOwnedStore extends MemoryAlertStore {
+      async close(): Promise<void> {
+        closed = true;
+      }
+    }
+    const manager = new AlertManager(
+      {} as unknown as QueueManager,
+      () => new Map<string, Queue>(),
+      { enabled: true },
+      new WorldOwnedStore(),
+    );
+
+    await manager.close();
+
+    // The runtime owns and closes this store during drain; the workbench must
+    // not close it here (early/double-close of a shared DB/Redis client).
+    expect(closed).toBe(false);
+  });
+});
+
 describe('AlertManager cooldown retention', () => {
   it('stays bounded when many distinct jobs fire a per-job rule', async () => {
     // A long cooldown means no entry expires during the run, so the cap must be

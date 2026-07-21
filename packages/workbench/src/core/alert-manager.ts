@@ -28,6 +28,12 @@ interface CooldownEntry {
 
 export class AlertManager {
   private readonly store: AlertStore;
+  /**
+   * True only when this manager created its own store (e.g. a Redis store it
+   * owns). An injected store is world-owned — the runtime closes it during
+   * drain, so closing it here would tear a shared client down early or twice.
+   */
+  private readonly ownsStore: boolean;
   private readonly persistence: AlertPersistence;
   private readonly options: AlertsOptions;
   private readonly queueManager: QueueManager;
@@ -54,6 +60,7 @@ export class AlertManager {
     this.queueManager = queueManager;
     this.getQueues = getQueues;
     this.options = options;
+    this.ownsStore = store === undefined;
     this.store = store ?? createAlertStore(options, {}).store;
     this.persistence = persistence;
   }
@@ -117,7 +124,7 @@ export class AlertManager {
   }
 
   async close(): Promise<void> {
-    await this.store.close?.();
+    if (this.ownsStore) await this.store.close?.();
     await this.closeListeners();
   }
 
