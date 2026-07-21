@@ -122,6 +122,10 @@ export function createQueueSchedulesWithTransport({
 
   const api: QueueScheduleController = {
     create: async (options) => {
+      // Schedules ride on delayed jobs: assert support before writing so a world
+      // without `delay` fails the request with no durable side effect (otherwise
+      // the store keeps a schedule that lists but can never tick).
+      assertCapability(transport, 'delay');
       const timezone = options.timezone ?? 'UTC';
       assertCron(options.cron, timezone);
       const task = await normalizeTask(options.task);
@@ -159,6 +163,7 @@ export function createQueueSchedulesWithTransport({
     },
 
     update: async (id, options) => {
+      assertCapability(transport, 'delay');
       const current = await storage.schedules.retrieve(id);
       if (!current) throw new Error(`Unknown queue schedule "${id}"`);
 
@@ -177,6 +182,7 @@ export function createQueueSchedulesWithTransport({
     },
 
     activate: async (id) => {
+      assertCapability(transport, 'delay');
       const schedule = await storage.schedules.activate(id);
       if (!schedule) throw new Error(`Unknown queue schedule "${id}"`);
       await enqueueNext(schedule);
@@ -203,6 +209,7 @@ export function createQueueSchedulesWithTransport({
     },
 
     upsertDeclarative: async (task) => {
+      assertCapability(transport, 'delay');
       if (!task.cron) {
         throw new Error(
           `@openqueue/sdk: task "${task.id}" cannot create a declarative schedule without cron`,
