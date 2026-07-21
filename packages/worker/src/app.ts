@@ -230,7 +230,9 @@ export function createWorkbenchForRuntime(
     registry: {
       jobs: runtime.catalog.map(catalogJob),
       flows: [],
-      enqueueJob: (job, input, opts) => runtime.trigger(job.name, input, opts),
+      // Trigger by the catalog id: string triggers resolve against catalog ids,
+      // not the display/BullMQ `name` (which may differ from the id).
+      enqueueJob: (job, input, opts) => runtime.trigger(job.id, input, opts),
       enqueueFlow: async () => {
         throw new Error('Flow catalog entries are not published yet');
       },
@@ -242,15 +244,14 @@ async function resolveTasks(
   config: OpenQueueConfig,
   cwd: string,
 ): Promise<TaskDefinition[]> {
-  if (config.tasks) {
-    const loaded = await Promise.all(
-      taskModules(config.tasks).map((source) => loadTaskModule(source, cwd)),
-    );
-    return validateTaskDefinitions(loaded.flat());
-  }
-
+  // `dirs` and `tasks` compose ("instead of — or alongside", per the config
+  // docs), matching the build's `discoverTaskFiles`. Import every source for its
+  // registration side effects, then read the full registry — not each loader's
+  // newly-registered delta: a config that statically imports its own task files
+  // registers them before discovery runs, so the delta would be empty. Load
+  // serially (not Promise.all): `loadQueueTasks` snapshots the registry by start
+  // index, so concurrent task modules would interleave into overlapping slices.
   for (const dir of config.dirs ?? []) {
-    // Side effect only: import the dir's task files, registering anything new.
     await loadQueueTasks(
       defineQueueTasks({
         cwd: resolve(cwd, dir),
@@ -268,9 +269,10 @@ async function resolveTasks(
       }),
     );
   }
-  // Read the full registry, not loadQueueTasks' newly-registered delta: a config
-  // that statically imports its task files registers them before discovery runs,
-  // so the delta would be empty. validateTaskDefinitions dedups/validates by id.
+  for (const source of taskModules(config.tasks ?? [])) {
+    await loadTaskModule(source, cwd);
+  }
+  // validateTaskDefinitions dedups/validates by id.
   return validateTaskDefinitions(getRegisteredTasks());
 }
 
@@ -316,6 +318,7 @@ function exportedValue(
 
 function catalogJob(entry: QueueCatalogEntry): WorkbenchJobDefinition {
   return {
+    id: entry.id,
     name: entry.name,
     queue: entry.queue,
     description: entry.description,
