@@ -6,7 +6,24 @@ import type {
   QueueRunSnapshot,
   QueueSchedule,
   QueueScheduleListOptions,
+  RunStatus,
 } from '../types';
+
+/** Statuses a run never leaves — its outcome is final. */
+export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
+  'completed',
+  'failed',
+  'canceled',
+  'timed_out',
+  'expired',
+];
+
+export function isTerminalRunStatus(status: string | undefined): boolean {
+  return (
+    status !== undefined &&
+    (TERMINAL_RUN_STATUSES as readonly string[]).includes(status)
+  );
+}
 
 export function filterSchedules(
   schedules: QueueSchedule[],

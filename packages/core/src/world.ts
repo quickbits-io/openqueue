@@ -7,6 +7,7 @@ export { InvalidScheduleError, UnknownTaskError } from './request-errors';
 export {
   filterRuns,
   filterSchedules,
+  isTerminalRunStatus,
   runFromSnapshot,
 } from './store/filter';
 export type {

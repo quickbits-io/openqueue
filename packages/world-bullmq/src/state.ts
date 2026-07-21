@@ -16,6 +16,7 @@ import type {
 import {
   filterRuns,
   filterSchedules,
+  isTerminalRunStatus,
   runFromSnapshot,
 } from '@openqueue/core/world';
 import type { Redis } from 'ioredis';
@@ -62,6 +63,13 @@ export function createRedisQueueState(
     runs: redisRunStore(redis, durable?.runs, keys),
     alerts: redisAlertStore(redis, durable?.alerts, keys),
     handle: async (event) => {
+      // A duplicate enqueue of a retained job is a no-op (BullMQ dedups the add,
+      // no worker runs it), so an enqueue snapshot must never resurrect a run
+      // already cached in a terminal state.
+      if (event.type === 'enqueue') {
+        const cached = await redis.hget(keys.runs, event.run.id);
+        if (cached && isTerminalRunStatus(parseRun(cached).status)) return;
+      }
       await writeRun(redis, keys, runFromSnapshot(event.run));
     },
   };

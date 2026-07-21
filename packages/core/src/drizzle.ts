@@ -1,4 +1,14 @@
-import { and, asc, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  lte,
+  notInArray,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -9,6 +19,7 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { TERMINAL_RUN_STATUSES } from './store/filter';
 import type {
   AlertContactPoint,
   AlertContactPointPreset,
@@ -1146,10 +1157,19 @@ async function persistRun(
 ): Promise<void> {
   const values = runValues(run);
   const { id: _id, createdAt: _createdAt, ...set } = values;
-  await db.insert(schema.queueRuns).values(values).onConflictDoUpdate({
-    target: schema.queueRuns.id,
-    set,
-  });
+  await db
+    .insert(schema.queueRuns)
+    .values(values)
+    .onConflictDoUpdate({
+      target: schema.queueRuns.id,
+      set,
+      // A duplicate enqueue of a retained job is a no-op (no worker runs it), so
+      // an enqueue snapshot must never resurrect a run that already finished.
+      setWhere:
+        type === 'enqueue'
+          ? notInArray(schema.queueRuns.status, [...TERMINAL_RUN_STATUSES])
+          : undefined,
+    });
   await db.insert(schema.queueRunEvents).values({
     id: crypto.randomUUID(),
     runId: run.id,

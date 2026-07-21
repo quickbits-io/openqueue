@@ -10,7 +10,12 @@ import type {
   QueueScheduleUpdateInput,
   QueueStorage,
 } from '../types';
-import { filterRuns, filterSchedules, runFromSnapshot } from './filter';
+import {
+  filterRuns,
+  filterSchedules,
+  isTerminalRunStatus,
+  runFromSnapshot,
+} from './filter';
 
 /**
  * In-memory {@link QueueStorage} mirroring the Redis state store's semantics
@@ -33,6 +38,14 @@ export function memoryQueueStorage(): QueueStorage {
     },
     alerts: memoryAlertStore(),
     handle: async (event) => {
+      // A duplicate enqueue of a retained job is a no-op (no worker runs it), so
+      // an enqueue snapshot must never resurrect a run that already finished.
+      if (
+        event.type === 'enqueue' &&
+        isTerminalRunStatus(runs.get(event.run.id)?.status)
+      ) {
+        return;
+      }
       runs.set(event.run.id, runFromSnapshot(event.run));
     },
   };

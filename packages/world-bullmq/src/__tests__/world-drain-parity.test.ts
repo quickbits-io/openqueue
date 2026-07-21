@@ -70,6 +70,29 @@ describe.skipIf(!url)('worldBullmq write-through parity (real redis)', () => {
     await world.close();
   });
 
+  it('a duplicate enqueue does not resurrect a terminal run', async () => {
+    const namespace = `parity-dup-${randomUUID().slice(0, 8)}`;
+    const storage = memoryStorage();
+    const world = worldBullmq({ producer: redis, storage })({ namespace });
+
+    const run = snapshot({ status: 'completed' });
+    await world.store.handle({ type: 'complete', run });
+
+    // A retained job re-triggered with the same runId: BullMQ dedups the add and
+    // no worker runs, yet the enqueue drain still fires. The finished run must
+    // survive in both the Redis cache and the durable store.
+    await world.store.handle({
+      type: 'enqueue',
+      run: snapshot({ id: run.id, status: 'queued', output: undefined }),
+    });
+
+    expect((await readRedisRun(namespace, run.id))?.status).toBe('completed');
+    const durable = await storage.runs.list({ id: run.id });
+    expect(durable.data[0]?.status).toBe('completed');
+
+    await world.close();
+  });
+
   it('keeps the Redis write when the durable drain throws (allSettled isolation)', async () => {
     const namespace = `parity-iso-${randomUUID().slice(0, 8)}`;
     const base = memoryStorage();
