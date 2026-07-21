@@ -120,7 +120,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@types/bun": "^1.2.18",
     "@types/dagre": "^0.7.54",
-    "@types/node": "^22.10.10",
+    "@types/node": "^26.1.1",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.3.4",
