@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/world-postgres",
-  "version": "0.1.4",
+  "version": "1.0.0",
   "description": "Self-migrating Postgres world for OpenQueue — a SKIP LOCKED delivery transport plus Drizzle-backed durable state, with zero Redis.",
   "license": "MIT",
   "type": "module",

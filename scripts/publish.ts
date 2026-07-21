@@ -29,7 +29,10 @@ async function alreadyPublished(name: string, version: string) {
   }
 }
 
-let published = 0;
+const packages: {
+  dir: string;
+  manifest: { name: string; version: string };
+}[] = [];
 
 for (const entry of entries) {
   if (!entry.isDirectory()) continue;
@@ -40,6 +43,27 @@ for (const entry of entries) {
 
   if (manifest.private || !manifest.name || !manifest.version) continue;
 
+  packages.push({
+    dir,
+    manifest: { name: manifest.name, version: manifest.version },
+  });
+}
+
+for (const { dir, manifest } of packages) {
+  console.log(`\nValidating ${manifest.name}@${manifest.version}…`);
+  const { status } = spawnSync('bun', ['publish', '--dry-run'], {
+    cwd: dir,
+    stdio: 'inherit',
+  });
+  if (status !== 0) {
+    console.error(`Failed to validate ${manifest.name} (exit ${status})`);
+    process.exit(status ?? 1);
+  }
+}
+
+let published = 0;
+
+for (const { dir, manifest } of packages) {
   if (await alreadyPublished(manifest.name, manifest.version)) {
     console.log(
       `Skipping ${manifest.name}@${manifest.version} — already on the registry.`,

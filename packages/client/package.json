@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/client",
-  "version": "0.1.4",
+  "version": "1.0.0",
   "description": "Fetch-only HTTP client for a deployed OpenQueue worker — trigger tasks, read runs, manage schedules with zero Redis/DB connections.",
   "license": "MIT",
   "type": "module",

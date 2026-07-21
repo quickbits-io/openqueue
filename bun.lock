@@ -72,7 +72,7 @@
     },
     "packages/cli": {
       "name": "@openqueue/cli",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "bin": {
         "openqueue": "./dist/index.js",
       },
@@ -90,7 +90,7 @@
     },
     "packages/client": {
       "name": "@openqueue/client",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "dependencies": {
         "zod": "^4.1.13",
       },
@@ -104,33 +104,25 @@
     },
     "packages/core": {
       "name": "@openqueue/core",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "dependencies": {
+        "@opentelemetry/api": "^1.9.0",
+        "@opentelemetry/sdk-trace-base": "^2.5.0",
         "cron-parser": "^4.9.0",
         "drizzle-orm": "^0.45.1",
         "jose": "^6.2.3",
         "zod": "^4.1.13",
       },
       "devDependencies": {
-        "@opentelemetry/api": "^1.9.0",
-        "@opentelemetry/sdk-trace-base": "^2.5.0",
         "@types/node": "^22.10.10",
         "tsup": "^8.5.0",
         "typescript": "^5.9.3",
         "vitest": "^4.0.18",
       },
-      "peerDependencies": {
-        "@opentelemetry/api": "^1.9.0",
-        "@opentelemetry/sdk-trace-base": "^2.5.0",
-      },
-      "optionalPeers": [
-        "@opentelemetry/api",
-        "@opentelemetry/sdk-trace-base",
-      ],
     },
     "packages/openqueue": {
       "name": "@openqueue/sdk",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "dependencies": {
         "@openqueue/client": "workspace:*",
         "@openqueue/core": "workspace:*",
@@ -144,7 +136,7 @@
     },
     "packages/workbench": {
       "name": "@openqueue/workbench",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "dependencies": {
         "@openqueue/client": "workspace:*",
         "@openqueue/core": "workspace:*",
@@ -201,7 +193,7 @@
     },
     "packages/worker": {
       "name": "@openqueue/worker",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "dependencies": {
         "@openqueue/core": "workspace:*",
         "@openqueue/workbench": "workspace:*",
@@ -218,7 +210,7 @@
     },
     "packages/world-bullmq": {
       "name": "@openqueue/world-bullmq",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "dependencies": {
         "@openqueue/core": "workspace:*",
         "bullmq": "^5.71.1",
@@ -235,7 +227,7 @@
     },
     "packages/world-postgres": {
       "name": "@openqueue/world-postgres",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "dependencies": {
         "@openqueue/core": "workspace:*",
         "drizzle-orm": "^0.45.1",

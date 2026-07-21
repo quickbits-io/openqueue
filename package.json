@@ -39,7 +39,8 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "clean": "turbo run clean && rm -rf node_modules",
-    "release": "turbo run build --filter='./packages/*' && bun run scripts/publish.ts"
+    "release:check": "bun run lint && bun run typecheck && bun run test && bun run build && bun run scripts/check-packages.ts",
+    "release": "bun run release:check && bun run scripts/publish.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.12",
