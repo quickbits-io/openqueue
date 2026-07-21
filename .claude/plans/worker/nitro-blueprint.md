@@ -394,3 +394,25 @@ e2e/src/harness.ts (do-not-break contract), and eve references
 .context/eve/packages/eve/src/internal/nitro/host/{create-application-nitro,
 configure-nitro-routes,build-application,start-production-server,
 sandbox-shutdown-plugin}.ts + .context/eve/packages/eve/src/internal/application/compiled-artifacts.ts.
+
+## AMENDMENT (2026-07-21, during stage 3 — supersedes the externalize-and-trace invariant)
+
+Empirical finding (backend agent, validated end-to-end): nitro@3.0.260610-beta's
+node-server preset **bundles all JS dependencies**; `traceDeps` is an include-list
+for *native/unbundleable* packages matched on resolved paths, and no lever
+externalizes normal JS packages (names, realpaths, rolldown external all fail or
+break nft tracing). Eve itself bundles its framework and traces only native deps
+(`@napi-rs/keyring`) — the original invariant misread eve. The registry-split
+rationale does not apply: rolldown dedups `@openqueue/core` by realpath into one
+module (verified: artifact `/openqueue/v1/info` reports the registered task).
+
+**Adopted: the bundled model.**
+- No `createRequire` probe, no symlink resolver, no `traceDeps` for `@openqueue/*`.
+- Workbench `dist/ui` copy target: `.output/dist/ui` (where the bundled
+  `UI_DIST_PATH`'s `import.meta.url`-relative resolution lands from
+  `server/index.mjs`), plus `.output/server/dist/ui` as belt-and-suspenders against
+  future chunk splitting.
+- Stage 3/5 verification changes accordingly: assert the SPA and one
+  `/workbench/assets/*` file serve 200 from the booted artifact (the real
+  contract), not a node_modules path.
+- Generated boot.mjs ordering and the `/**` catch-all are unchanged and verified.
