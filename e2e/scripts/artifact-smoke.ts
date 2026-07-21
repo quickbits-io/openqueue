@@ -261,9 +261,14 @@ async function main(): Promise<void> {
       `[smoke] drain ok: job completed, exit=${exit} ${Date.now() - sigAt}ms after SIGTERM`,
     );
 
-    // 9. Source-boot paths must resolve a task-importing config too — the runtime
-    //    counterpart of the census fix. Remove the artifact so `start` falls back
-    //    to source; `dev-worker` always boots from source.
+    // 9. `openqueue start` runs the artifact through the CLI. The bundle is a
+    //    Node artifact, so with `node` on PATH (CI/dev) start must pick it over
+    //    Bun — assert it boots healthy and logs the chosen runtime.
+    await assertArtifactStart();
+
+    // 10. Source-boot paths must resolve a task-importing config too — the
+    //    runtime counterpart of the census fix. Remove the artifact so `start`
+    //    falls back to source; `dev-worker` always boots from source.
     await rm(join(fixtureDir, '.output'), { recursive: true, force: true });
     await assertSourceBoot('start');
     await assertSourceBoot('dev-worker');
@@ -271,6 +276,57 @@ async function main(): Promise<void> {
     console.log('SMOKE PASSED');
   } finally {
     child.kill('SIGKILL');
+  }
+}
+
+/**
+ * Boot the built artifact via `openqueue start` (the CLI's spawn path) and
+ * assert it becomes healthy and logs the runtime it chose. `node` is on PATH in
+ * CI/dev, so start must run the Node bundle under Node, not Bun's node-compat.
+ */
+async function assertArtifactStart(): Promise<void> {
+  const port = await freePort();
+  const worker = Bun.spawn(
+    [process.execPath, cliDist, 'start', '--config', 'worker.config.ts'],
+    {
+      cwd: fixtureDir,
+      env: { ...process.env, REDIS_URL, PORT: String(port) },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  let out = '';
+  pump(worker.stdout, (text) => {
+    out += text;
+  });
+  pump(worker.stderr, (text) => {
+    out += text;
+  });
+  try {
+    const healthy = await until(async () => {
+      try {
+        return (await fetch(`http://127.0.0.1:${port}/health`)).ok;
+      } catch {
+        return false;
+      }
+    }, HEALTH_DEADLINE_MS);
+    assert(
+      healthy,
+      `openqueue start (artifact) did not become healthy:\n${out}`,
+    );
+    const runtimeLine = out
+      .split('\n')
+      .find((line) => line.includes('artifact runtime:'));
+    assert(runtimeLine, `no "artifact runtime:" log line:\n${out}`);
+    assert(
+      runtimeLine.includes('Node'),
+      `expected the artifact to boot under Node (node is on PATH), got: ${runtimeLine.trim()}`,
+    );
+    console.log(`[smoke] ${runtimeLine.trim()}`);
+  } finally {
+    worker.kill('SIGTERM');
+    await Promise.race([worker.exited, sleep(5_000)]);
+    worker.kill('SIGKILL');
   }
 }
 

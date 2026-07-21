@@ -12,6 +12,9 @@ out/
 # turbo
 .turbo/
 
+# memory-soak harness output (manual profiling tool)
+.soak-artifacts/
+
 # next.js / site
 .next/
 .source/

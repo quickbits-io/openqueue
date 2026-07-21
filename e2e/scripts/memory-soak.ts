@@ -31,9 +31,11 @@
  *   SOAK_WORLD=postgres bun e2e/scripts/memory-soak.ts
  */
 import { heapStats } from 'bun:jsc';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createClient } from '@openqueue/client';
 import {
   defineConfig,
   getRegisteredTasks,
@@ -46,6 +48,7 @@ import { z } from 'zod';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const e2eRoot = resolve(scriptDir, '..');
+const repoRoot = resolve(e2eRoot, '..');
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6380';
 const DATABASE_URL =
@@ -53,8 +56,11 @@ const DATABASE_URL =
   'postgres://openqueue:openqueue@localhost:5434/openqueue';
 const WORLD = process.env.SOAK_WORLD === 'postgres' ? 'postgres' : 'bullmq';
 const QUICK = process.env.SOAK_QUICK === '1';
+const TARGET =
+  process.env.SOAK_TARGET === 'artifact' ? 'artifact' : 'inprocess';
 
 const PHASE_MS = num('SOAK_PHASE_MS', QUICK ? 20_000 : 180_000);
+const POLL_PHASE_MS = num('SOAK_POLL_MS', PHASE_MS);
 const IDLE_AFTER_LOAD_MS = num(
   'SOAK_IDLE_AFTER_LOAD_MS',
   QUICK ? 20_000 : 120_000,
@@ -571,8 +577,275 @@ const scenarios: Record<string, () => Promise<void>> = {
   'alerts-failures': scenarioAlertsFailures,
 };
 
+// ── Artifact comparison (SOAK_TARGET=artifact) ───────────────────────────────
+// Boots the BUILT Nitro artifact (e2e/artifact fixture) as an external process
+// under system Node and under Bun, drives the same phases, and samples the
+// child's RSS with `ps` — the metric prod (and Fly) actually sees. No forced GC:
+// the process is external and RSS is the point.
+
+const cliDist = resolve(repoRoot, 'packages', 'cli', 'dist', 'index.js');
+const artifactDir = resolve(e2eRoot, 'artifact');
+const artifactEntry = join(artifactDir, '.output', 'server', 'index.mjs');
+const ARTIFACT_TOKEN = 'artifact-smoke';
+
+interface RuntimePhaseSamples {
+  phase: string;
+  dtSec: number;
+  rssMb: number;
+}
+
+interface ArtifactRuntimeResult {
+  runtime: string;
+  version: string;
+  baselineRssMb: number;
+  idleEndRssMb: number;
+  pollEndRssMb: number;
+  loadPeakRssMb: number;
+  postLoadRssMb: number;
+  samples: RuntimePhaseSamples[];
+}
+
+function freePort(): Promise<number> {
+  return new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      server.close(() =>
+        typeof address === 'object' && address
+          ? resolvePort(address.port)
+          : reject(new Error('failed to allocate a port')),
+      );
+    });
+  });
+}
+
+/** Resident set size (MB) of an external pid via `ps` (KB on macOS/Linux). */
+function rssMb(pid: number): number {
+  const probe = Bun.spawnSync(['ps', '-o', 'rss=', '-p', String(pid)]);
+  const kb = Number(probe.stdout.toString().trim());
+  return Number.isFinite(kb) && kb > 0 ? kb / 1024 : Number.NaN;
+}
+
+function runtimeVersion(bin: string): string {
+  const probe = Bun.spawnSync([bin, '--version']);
+  return probe.success ? probe.stdout.toString().trim() : 'unknown';
+}
+
+async function buildArtifact(): Promise<void> {
+  if (existsSync(artifactEntry)) {
+    console.log('[soak] artifact already built — reusing .output');
+    return;
+  }
+  console.log('[soak] building artifact (openqueue build)…');
+  const build = Bun.spawn(
+    [process.execPath, cliDist, 'build', '--config', 'worker.config.ts'],
+    {
+      cwd: artifactDir,
+      env: { ...process.env, REDIS_URL },
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  );
+  const code = await build.exited;
+  if (code !== 0 || !existsSync(artifactEntry)) {
+    throw new Error(`openqueue build failed (exit ${code})`);
+  }
+}
+
+async function waitHealthy(url: string, deadlineMs: number): Promise<boolean> {
+  const deadline = Date.now() + deadlineMs;
+  while (Date.now() < deadline) {
+    try {
+      if ((await fetch(`${url}/health`)).ok) return true;
+    } catch {
+      // not up yet
+    }
+    await sleep(500);
+  }
+  return false;
+}
+
+async function runArtifactRuntime(
+  runtime: string,
+  bin: string,
+): Promise<ArtifactRuntimeResult> {
+  const port = await freePort();
+  const url = `http://127.0.0.1:${port}`;
+  const namespace = `soak-artifact-${runtime}-${Date.now()}`;
+  console.log(
+    `\n──── artifact under ${runtime} ${runtimeVersion(bin)} (:${port}) ────`,
+  );
+  const child = Bun.spawn([bin, artifactEntry], {
+    cwd: artifactDir,
+    env: {
+      ...process.env,
+      REDIS_URL,
+      PORT: String(port),
+      NITRO_PORT: String(port),
+      OPENQUEUE_NAMESPACE: namespace,
+    },
+    stdout: 'ignore',
+    stderr: 'ignore',
+  });
+
+  const samples: RuntimePhaseSamples[] = [];
+  const t0 = Date.now();
+  const record = (phase: string): number => {
+    const value = rssMb(child.pid);
+    samples.push({
+      phase,
+      dtSec: Math.round((Date.now() - t0) / 1000),
+      rssMb: value,
+    });
+    return value;
+  };
+
+  try {
+    if (!(await waitHealthy(url, 60_000))) {
+      throw new Error(`artifact under ${runtime} never became healthy`);
+    }
+    await sleep(3000);
+    const baselineRssMb = record('baseline');
+    console.log(`  baseline RSS ${baselineRssMb.toFixed(1)}MB`);
+
+    // idle
+    const idleEnd = Date.now() + PHASE_MS;
+    while (Date.now() < idleEnd) {
+      await sleep(SAMPLE_MS);
+      record('idle');
+    }
+    const idleEndRssMb = record('idle-end');
+    console.log(`  idle end RSS ${idleEndRssMb.toFixed(1)}MB`);
+
+    // dashboard poll
+    const pollPaths = [
+      '/workbench/api/overview',
+      '/workbench/api/queues',
+      '/workbench/api/runs?limit=50',
+      '/workbench/api/metrics',
+      '/metrics',
+    ];
+    const pollDeadline = Date.now() + POLL_PHASE_MS;
+    while (Date.now() < pollDeadline) {
+      await Promise.allSettled(
+        pollPaths.map((p) => fetch(`${url}${p}`).then((r) => r.arrayBuffer())),
+      );
+      await sleep(2000);
+      record('poll');
+    }
+    const pollEndRssMb = record('poll-end');
+    console.log(`  poll end RSS ${pollEndRssMb.toFixed(1)}MB`);
+
+    // load then idle
+    const client = createClient({
+      host: url,
+      auth: { bearer: ARTIFACT_TOKEN },
+    });
+    console.log(`  enqueuing ${LOAD_JOBS} jobs`);
+    const batch = 200;
+    for (let i = 0; i < LOAD_JOBS; i += batch) {
+      await Promise.all(
+        Array.from({ length: Math.min(batch, LOAD_JOBS - i) }, () =>
+          client.trigger('echo', { message: 'soak' }),
+        ),
+      );
+      record('load');
+    }
+    let loadPeakRssMb = record('load');
+    const leftover = await drainQueue(url, DRAIN_DEADLINE_MS);
+    loadPeakRssMb = Math.max(loadPeakRssMb, record('drain'));
+    console.log(
+      leftover === 0
+        ? '  drained to empty'
+        : `  WARN: ${leftover} jobs still queued`,
+    );
+    const settleEnd = Date.now() + IDLE_AFTER_LOAD_MS;
+    while (Date.now() < settleEnd) {
+      await sleep(SAMPLE_MS);
+      loadPeakRssMb = Math.max(loadPeakRssMb, record('settle'));
+    }
+    const postLoadRssMb = record('post-load');
+    console.log(
+      `  load peak RSS ${loadPeakRssMb.toFixed(1)}MB → settled ${postLoadRssMb.toFixed(1)}MB`,
+    );
+
+    return {
+      runtime,
+      version: runtimeVersion(bin),
+      baselineRssMb,
+      idleEndRssMb,
+      pollEndRssMb,
+      loadPeakRssMb,
+      postLoadRssMb,
+      samples,
+    };
+  } finally {
+    child.kill('SIGTERM');
+    await Promise.race([child.exited, sleep(15_000)]);
+    child.kill('SIGKILL');
+  }
+}
+
+async function runArtifactComparison(): Promise<void> {
+  console.log(
+    `[soak] TARGET=artifact phase=${PHASE_MS}ms load=${LOAD_JOBS} out=${OUT_DIR}`,
+  );
+  await buildArtifact();
+
+  const nodeBin = Bun.which('node');
+  const runtimes: Array<{ runtime: string; bin: string }> = [];
+  if (nodeBin) runtimes.push({ runtime: 'node', bin: nodeBin });
+  else console.log('[soak] no `node` on PATH — skipping the Node run');
+  runtimes.push({ runtime: 'bun', bin: process.execPath });
+
+  const results: ArtifactRuntimeResult[] = [];
+  for (const { runtime, bin } of runtimes) {
+    results.push(await runArtifactRuntime(runtime, bin));
+  }
+
+  console.log('\n════════ artifact RSS comparison (MB) ════════');
+  const cols = [18, 10, 10, 10, 11, 10];
+  const header = [
+    'runtime',
+    'baseline',
+    'idle-end',
+    'poll-end',
+    'load-peak',
+    'settled',
+  ];
+  const line = (cells: string[]): string =>
+    cells.map((c, i) => c.padEnd(cols[i] ?? 10)).join('');
+  console.log(`  ${line(header)}`);
+  for (const r of results) {
+    console.log(
+      `  ${line([
+        `${r.runtime} ${r.version}`,
+        r.baselineRssMb.toFixed(1),
+        r.idleEndRssMb.toFixed(1),
+        r.pollEndRssMb.toFixed(1),
+        r.loadPeakRssMb.toFixed(1),
+        r.postLoadRssMb.toFixed(1),
+      ])}`,
+    );
+  }
+  writeFileSync(
+    resolve(OUT_DIR, 'artifact-comparison.json'),
+    JSON.stringify(
+      { phaseMs: PHASE_MS, loadJobs: LOAD_JOBS, results },
+      null,
+      2,
+    ),
+  );
+}
+
 async function main(): Promise<void> {
   mkdirSync(OUT_DIR, { recursive: true });
+  if (TARGET === 'artifact') {
+    await runArtifactComparison();
+    console.log('\n[soak] done');
+    return;
+  }
   const selected =
     ONLY.length > 0
       ? ONLY.filter((name) => name in scenarios)
