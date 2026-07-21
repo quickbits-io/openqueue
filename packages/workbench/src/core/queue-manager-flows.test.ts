@@ -1,6 +1,22 @@
 import type { Job, Queue } from 'bullmq';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { QueueManager } from './queue-manager';
+
+// QueueManager eagerly builds a FlowProducer from the first queue's connection;
+// a real one would open an ioredis client to the stub's (default) address and
+// crash Redis-less environments (the release job) with an uncaught
+// ECONNREFUSED. These tests only exercise job-graph traversal over stub queues.
+vi.mock('bullmq', async () => {
+  const actual = await vi.importActual<typeof import('bullmq')>('bullmq');
+  return {
+    ...actual,
+    FlowProducer: class {
+      close(): Promise<void> {
+        return Promise.resolve();
+      }
+    },
+  };
+});
 
 function job(input: {
   id: string;
