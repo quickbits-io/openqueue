@@ -71,11 +71,21 @@ export function worldBullmq(
       transport,
       store,
       close: async () => {
-        await transport.close();
-        await store.alerts.close?.();
+        // Settle both phases before quitting the owned clients: a rejected
+        // transport close must not strand world-owned Redis handles. The first
+        // failure still surfaces, after cleanup.
+        const results = await Promise.allSettled([
+          transport.close(),
+          Promise.resolve().then(() => store.alerts.close?.()),
+        ]);
         await Promise.all(
           ownedClients.map((client) => client.quit().catch(() => undefined)),
         );
+        const failure = results.find(
+          (result): result is PromiseRejectedResult =>
+            result.status === 'rejected',
+        );
+        if (failure) throw failure.reason;
       },
     };
   };
