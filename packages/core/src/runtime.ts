@@ -127,9 +127,21 @@ export async function createQueueWorkerFromWorld(
       spans: store.spans,
       alerts: store.alerts,
       close: async () => {
-        await Promise.all(consumers.map((consumer) => consumer.close()));
+        // Close every consumer even if one rejects, then always close the
+        // world. A consumer whose close fails (BullMQ or a custom transport
+        // against an already-failing backend) must not strand the world's
+        // schedule controller and world-owned DB/Redis handles. Surface the
+        // first consumer failure only after the world cleanup has run.
+        const closes = await Promise.allSettled(
+          consumers.map((consumer) => consumer.close()),
+        );
         await parts.close();
         await options.onClose?.();
+        const failed = closes.find(
+          (result): result is PromiseRejectedResult =>
+            result.status === 'rejected',
+        );
+        if (failed) throw failed.reason;
       },
     };
 
