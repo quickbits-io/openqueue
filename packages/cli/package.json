@@ -39,6 +39,7 @@
     "clean": "rm -rf .turbo node_modules dist",
     "lint": "biome check .",
     "format": "biome format --write .",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -22,34 +22,13 @@ export async function loadDirectTasks(
   config: OpenQueueConfig,
   cwd: string,
 ): Promise<TaskDefinition[]> {
-  if (config.tasks) {
-    const loaded = await Promise.all(
-      taskModules(config.tasks).map((source) => loadTaskModule(source, cwd)),
-    );
-    return validateTaskDefinitions(loaded.flat());
-  }
-
+  // dirs and tasks compose ("instead of — or alongside", per the config docs),
+  // exactly like the build's discoverTaskFiles: enumerate every source file
+  // (dirs globs + tasks modules), import them once serially in loadTasksFromFiles,
+  // then read the full registry. This mirrors the worker's resolveTasks so the
+  // dev/source worker and the built artifact resolve the same task set.
   const files = await discoverTaskFiles(config, cwd);
   return loadTasksFromFiles(files, cwd);
-}
-
-async function loadTaskModule(
-  source: QueueConfigTaskModule,
-  cwd: string,
-): Promise<TaskDefinition[]> {
-  const mod = (await import(
-    pathToFileURL(resolve(cwd, source.module)).href
-  )) as Record<string, unknown>;
-  const value = exportedValue(mod, source);
-
-  if (isTaskDiscovery(value)) {
-    const files = await discoverDiscoveryFiles(value);
-    return loadTasksFromFiles(files, discoveryRoot(value));
-  }
-
-  return validateTaskDefinitions(
-    taskValues({ value }).filter(isTaskDefinition),
-  );
 }
 
 /**
@@ -90,16 +69,23 @@ export async function discoverTaskFiles(
 
   for (const dir of config.dirs ?? []) {
     files.push(
-      ...(await scanFiles(resolve(cwd, dir), [
-        '**/*.ts',
-        '**/*.tsx',
-        '**/*.mts',
-        '**/*.cts',
-        '**/*.js',
-        '**/*.jsx',
-        '**/*.mjs',
-        '**/*.cjs',
-      ])),
+      ...(await scanFiles(
+        resolve(cwd, dir),
+        [
+          '**/*.ts',
+          '**/*.tsx',
+          '**/*.mts',
+          '**/*.cts',
+          '**/*.js',
+          '**/*.jsx',
+          '**/*.mjs',
+          '**/*.cjs',
+        ],
+        // Apply `config.exclude` relative to each scanned dir, like the worker's
+        // defineQueueTasks path — a root-relative exclude (e.g. `generated/**`)
+        // must match, which an absolute-path filter never did.
+        config.exclude,
+      )),
     );
   }
 
@@ -117,7 +103,7 @@ export async function discoverTaskFiles(
     files.push(resolve(cwd, source.module));
   }
 
-  return sortTaskFiles(files.filter((file) => !excluded(file, config)));
+  return sortTaskFiles(files);
 }
 
 async function discoverDiscoveryFiles(
@@ -149,13 +135,6 @@ async function scanFiles(
       const relative = file.slice(cwd.length + 1).replaceAll('\\', '/');
       return !excludePatterns.some((pattern) => pattern.test(relative));
     }),
-  );
-}
-
-function excluded(file: string, config: OpenQueueConfig): boolean {
-  const normalized = file.replaceAll('\\', '/');
-  return (config.exclude ?? []).some((pattern) =>
-    globToRegExp(pattern).test(normalized),
   );
 }
 
@@ -221,12 +200,6 @@ export function exportedValue(
   return value;
 }
 
-function taskValues(mod: Record<string, unknown>): unknown[] {
-  return Object.values(mod).flatMap((value) =>
-    Array.isArray(value) ? value : [value],
-  );
-}
-
 export function isTaskDiscovery(value: unknown): value is QueueTaskDiscovery {
   return (
     value !== null &&
@@ -240,8 +213,4 @@ export function isTaskDiscovery(value: unknown): value is QueueTaskDiscovery {
 export function discoveryRoot(source: QueueTaskDiscovery): string {
   if (source.cwd instanceof URL) return fileURLToPath(source.cwd);
   return resolve(source.cwd);
-}
-
-function isTaskDefinition(value: unknown): value is TaskDefinition {
-  return value !== null && typeof value === 'object' && 'handler' in value;
 }
