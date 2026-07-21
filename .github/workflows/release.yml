@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     branches: [main]
+  # Re-run a publish for an already-tagged release (e.g. after fixing a
+  # release:check failure) without waiting for the next release PR.
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
@@ -33,7 +36,7 @@ jobs:
   publish:
     name: Publish to npm
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: needs.release-please.outputs.releases_created == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
