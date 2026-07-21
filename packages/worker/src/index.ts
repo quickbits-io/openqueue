@@ -49,7 +49,12 @@ export async function startWorkerApp(
   let closed = false;
   const drain = async () => {
     console.log('[openqueue] shutdown received, draining');
-    await close();
+    try {
+      await close();
+    } catch (err) {
+      console.error('[openqueue] shutdown failed', err);
+      process.exit(1);
+    }
     process.exit(0);
   };
   const close = async () => {
@@ -57,8 +62,11 @@ export async function startWorkerApp(
     closed = true;
     process.off('SIGTERM', drain);
     process.off('SIGINT', drain);
-    await handle.close();
-    await server.close(true);
+    try {
+      await handle.close();
+    } finally {
+      await server.close(true);
+    }
   };
 
   if (options.signals !== false) {

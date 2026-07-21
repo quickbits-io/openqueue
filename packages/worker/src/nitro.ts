@@ -40,10 +40,22 @@ export function createNitroWorkerPlugin(
     );
     nitroApp.hooks.hook('close', drain);
     process.once('SIGTERM', () => {
-      void drain().finally(() => process.exit(143));
+      drain().then(
+        () => process.exit(143),
+        (err) => {
+          console.error('[openqueue] drain failed', err);
+          process.exit(1);
+        },
+      );
     });
     process.once('SIGINT', () => {
-      void drain().finally(() => process.exit(130));
+      drain().then(
+        () => process.exit(130),
+        (err) => {
+          console.error('[openqueue] drain failed', err);
+          process.exit(1);
+        },
+      );
     });
   };
 }

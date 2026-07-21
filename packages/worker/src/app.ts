@@ -131,9 +131,10 @@ export async function createWorkerApp(
     state.ready = false;
     // The workbench started its own alert-manager interval + QueueEvents
     // listeners; the runtime doesn't own them, so tear it down here or the event
-    // loop never drains.
+    // loop never drains. Workbench teardown is best-effort; a failed runtime
+    // drain/close must reach the caller (signal paths exit non-zero on it).
     await workbench?.close().catch(() => undefined);
-    await runtime.close().catch(() => undefined);
+    await runtime.close();
   };
 
   return { runtime, app: health, close };
