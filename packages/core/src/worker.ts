@@ -63,13 +63,14 @@ const TRACER_VERSION = '0.1.0';
 
 export function createWorkerConsumers<C extends TransportConsumer>(
   jobs: TaskDefinition[],
-  transport: { consume(queue: string, options: ConsumeOptions): C },
+  transport: { id: string; consume(queue: string, options: ConsumeOptions): C },
   options: WorkerConsumerOptions = {},
 ): C[] {
   const drain = composeDrains(options.drain);
   const limiter = createLimiter(options.globalConcurrency);
   const groups = groupJobsByQueue(jobs, options.queueConcurrency);
   const trigger = options.trigger ?? moduleTrigger;
+  const transportId = transport.id;
 
   return groups.map(
     ({ queue: queueName, jobs: defs, concurrency, maxStalledCount }) => {
@@ -84,7 +85,7 @@ export function createWorkerConsumers<C extends TransportConsumer>(
           // spent waiting on global concurrency plus run setup.
           const dequeuedAt = Date.now();
           return limiter(() =>
-            runJob(job, defByName, drain, dequeuedAt, trigger),
+            runJob(job, defByName, drain, dequeuedAt, trigger, transportId),
           );
         },
         onCompleted: async (job) => {
@@ -178,6 +179,7 @@ async function runJob(
   drain: QueueDrain,
   dequeuedAt: number,
   trigger: QueueTrigger,
+  transportId: string,
 ): Promise<unknown> {
   const def = defByName.get(job.name);
   if (!def) {
@@ -255,7 +257,7 @@ async function runJob(
       : context.active();
   const attemptName = `Attempt ${attempt}`;
   const attemptAttrs: Attributes = {
-    'messaging.system': 'bullmq',
+    'messaging.system': transportId,
     'messaging.destination.name': def.queue,
     'messaging.operation': 'process',
     'messaging.message.id': job.id ?? '',
