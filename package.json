@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --concurrency=16",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "check:control": "bun scripts/check-control-clean.ts",
