@@ -7,6 +7,7 @@ import {
 } from '@openqueue/core';
 import { isBullmqTransport } from '@openqueue/world-bullmq';
 import { describe, expect, it } from 'vitest';
+import { createWorkerApp } from './app';
 import { createWorkbenchForRuntime, startWorkerApp } from './index';
 
 function config(basePath: string): OpenQueueConfig {
@@ -134,5 +135,32 @@ describe('createWorkbenchForRuntime base path', () => {
     expect(core.options.basePath).toBe('/admin/jobs');
 
     await runtime.close();
+  });
+});
+
+describe('createWorkerApp workbench teardown', () => {
+  const noop = task({
+    id: 'wb-teardown-noop',
+    queue: 'noop',
+    run: async () => undefined,
+  });
+
+  it('close() clears the workbench alert-manager interval', async () => {
+    const timers = () =>
+      process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
+    const baseline = timers();
+    const handle = await createWorkerApp(
+      {
+        namespace: 'wb-teardown',
+        world: worldLocal(),
+        tasks: { module: './noop' },
+        workbench: { enabled: true },
+      },
+      { tasks: [noop] },
+    );
+    // The workbench started a non-unref'd health-check interval on boot.
+    expect(timers()).toBeGreaterThan(baseline);
+    await handle.close();
+    expect(timers()).toBe(baseline);
   });
 });

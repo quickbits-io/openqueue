@@ -102,6 +102,15 @@ export class WorkbenchCore {
   }
 
   /**
+   * Release the resources this core started: the alert manager's health-check
+   * interval and its QueueEvents listeners. Idempotent, and a no-op when alerts
+   * were never enabled. The caller owns the queues themselves.
+   */
+  async close(): Promise<void> {
+    await this.alertManager?.close();
+  }
+
+  /**
    * Async factory: build a `WorkbenchCore` from `WorkbenchOptions`, performing
    * BullMQ queue auto-discovery via `SCAN <prefix>:*:meta` when `queues` is
    * not provided.

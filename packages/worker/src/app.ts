@@ -106,12 +106,11 @@ export async function createWorkerApp(
     `[openqueue] control API mounted at /openqueue/v1 (auth: ${controlAuth.mode})`,
   );
 
+  let workbench: WorkbenchCore | undefined;
   if (config.workbench?.enabled) {
     const basePath = config.workbench.basePath ?? '/workbench';
-    health.mount(
-      basePath,
-      buildWorkbenchApp(createWorkbenchForRuntime(runtime, config, queues)),
-    );
+    workbench = createWorkbenchForRuntime(runtime, config, queues);
+    health.mount(basePath, buildWorkbenchApp(workbench));
     if (queues.length === 0) {
       console.log(
         '[openqueue] workbench: no BullMQ queues on this world — queue/run pages will be empty; use /openqueue/v1 for run history',
@@ -129,6 +128,10 @@ export async function createWorkerApp(
     if (closed) return;
     closed = true;
     state.ready = false;
+    // The workbench started its own alert-manager interval + QueueEvents
+    // listeners; the runtime doesn't own them, so tear it down here or the event
+    // loop never drains.
+    await workbench?.close().catch(() => undefined);
     await runtime.close().catch(() => undefined);
   };
 
