@@ -43,25 +43,38 @@ const failedRule: AlertRule = {
 };
 
 describe('AlertManager store ownership on close', () => {
-  it('leaves an injected (world-owned) alert store open', async () => {
-    let closed = false;
-    class WorldOwnedStore extends MemoryAlertStore {
-      async close(): Promise<void> {
-        closed = true;
-      }
+  class ClosableStore extends MemoryAlertStore {
+    closed = false;
+    async close(): Promise<void> {
+      this.closed = true;
     }
-    const manager = new AlertManager(
+  }
+
+  function manager(store: ClosableStore, ownsStore: boolean): AlertManager {
+    return new AlertManager(
       {} as unknown as QueueManager,
       () => new Map<string, Queue>(),
       { enabled: true },
-      new WorldOwnedStore(),
+      store,
+      'custom',
+      ownsStore,
     );
+  }
 
-    await manager.close();
-
+  it('leaves an injected (world-owned) alert store open', async () => {
     // The runtime owns and closes this store during drain; the workbench must
     // not close it here (early/double-close of a shared DB/Redis client).
-    expect(closed).toBe(false);
+    const store = new ClosableStore();
+    await manager(store, false).close();
+    expect(store.closed).toBe(false);
+  });
+
+  it('closes a store it owns (e.g. a self-created Redis store)', async () => {
+    // The standalone workbench builds its own Redis store via createAlertStore
+    // and must close it on WorkbenchCore.close() to avoid an ioredis leak.
+    const store = new ClosableStore();
+    await manager(store, true).close();
+    expect(store.closed).toBe(true);
   });
 });
 

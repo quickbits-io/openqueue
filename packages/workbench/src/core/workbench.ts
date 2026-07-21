@@ -89,6 +89,9 @@ export class WorkbenchCore {
         alertsOpts,
         store,
         persistence,
+        // We own (and must close) a store createAlertStore built for us; an
+        // injected `alerts.store` is world-owned and closed by the runtime.
+        alertsOpts.store === undefined,
       );
       if (alertsOpts.delivery !== false) {
         void this.alertManager.start().catch((err) => {

@@ -56,12 +56,17 @@ export class AlertManager {
     options: AlertsOptions,
     store?: AlertStore,
     persistence: AlertPersistence = 'memory',
+    ownsStore?: boolean,
   ) {
     this.queueManager = queueManager;
     this.getQueues = getQueues;
     this.options = options;
-    this.ownsStore = store === undefined;
     this.store = store ?? createAlertStore(options, {}).store;
+    // Ownership is decided by the caller: a store AlertManager built itself is
+    // owned, and for an injected store the caller declares it (WorkbenchCore
+    // owns one it created via createAlertStore, but not a world-owned store
+    // handed in as `alerts.store`). Default: own only a self-created store.
+    this.ownsStore = ownsStore ?? store === undefined;
     this.persistence = persistence;
   }
 
