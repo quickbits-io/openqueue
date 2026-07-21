@@ -34,6 +34,16 @@ export async function runMigrations(
   steps: readonly WorldMigrationStep[],
   mode: MigrationMode,
 ): Promise<void> {
+  // Manual mode never mutates the database: it probes migration state read-only
+  // and fails on a pending (or diverged) step. Bootstrap DDL (the schema +
+  // bookkeeping table) and step application run only under `auto`, so a
+  // restricted role without CREATE gets the actionable pending guidance rather
+  // than a permission error, and a privileged manual boot leaves the DB untouched.
+  if (mode === 'manual') {
+    await assertMigrationsApplied(sql, steps);
+    return;
+  }
+
   const reserved = await sql.reserve();
   try {
     await reserved`select pg_advisory_lock(${MIGRATION_LOCK_KEY}::bigint)`;
@@ -57,11 +67,6 @@ export async function runMigrations(
           assertChecksum(step, existing);
           continue;
         }
-        if (mode === 'manual') {
-          throw new Error(
-            `@openqueue/world-postgres: migration "${step.id}" is pending. Review and apply the full output of \`openqueue migrations print\` — it includes the bookkeeping insert that marks the migration applied, so boot proceeds afterwards — or set migrations: 'auto' to apply it on boot.`,
-          );
-        }
         await applyStep(reserved, step);
       }
     } finally {
@@ -69,6 +74,37 @@ export async function runMigrations(
     }
   } finally {
     reserved.release();
+  }
+}
+
+/**
+ * Read-only assertion that every step is applied with a matching checksum —
+ * never takes the lock or runs DDL. `to_regclass` returns null (no error) when
+ * the bookkeeping table is absent, so an uninitialized database reports every
+ * step as pending. A diverged checksum is a hard failure, exactly as in `auto`.
+ */
+async function assertMigrationsApplied(
+  sql: postgres.Sql,
+  steps: readonly WorldMigrationStep[],
+): Promise<void> {
+  const [probe] = await sql<{ reg: string | null }[]>`
+    select to_regclass(${'openqueue.__openqueue_migrations'}) as reg
+  `;
+  const applied = probe?.reg
+    ? await sql<{ id: string; checksum: string }[]>`
+        select id, checksum from "openqueue"."__openqueue_migrations"
+      `
+    : [];
+  const appliedById = new Map(applied.map((row) => [row.id, row.checksum]));
+
+  for (const step of steps) {
+    const existing = appliedById.get(step.id);
+    if (existing === undefined) {
+      throw new Error(
+        `@openqueue/world-postgres: migration "${step.id}" is pending. Review and apply the full output of \`openqueue migrations print\` — it includes the bookkeeping insert that marks the migration applied, so boot proceeds afterwards — or set migrations: 'auto' to apply it on boot.`,
+      );
+    }
+    assertChecksum(step, existing);
   }
 }
 

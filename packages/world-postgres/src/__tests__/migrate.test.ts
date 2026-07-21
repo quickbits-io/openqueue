@@ -142,6 +142,21 @@ describe.runIf(hasDb)('world-postgres migrations', () => {
     );
   });
 
+  it('runs no DDL in manual mode, leaving an uninitialized schema absent', async () => {
+    // beforeEach dropped the schema. Manual mode must report pending WITHOUT
+    // creating the schema or bookkeeping table, so a restricted (no-CREATE) role
+    // gets the actionable pending message rather than a permission error.
+    await expect(runMigrations(sql, migrations, 'manual')).rejects.toThrow(
+      /pending/,
+    );
+    const [schema] = await sql<{ exists: boolean }[]>`
+      select exists (
+        select 1 from information_schema.schemata where schema_name = 'openqueue'
+      ) as exists
+    `;
+    expect(schema?.exists).toBe(false);
+  });
+
   it('is a no-op in manual mode once every step is applied', async () => {
     await runMigrations(sql, migrations, 'auto');
     // Manual mode only refuses PENDING steps; with nothing pending it must not throw.
