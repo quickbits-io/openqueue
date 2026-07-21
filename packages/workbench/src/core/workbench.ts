@@ -115,7 +115,8 @@ export class WorkbenchCore {
    * BullMQ queue auto-discovery via `SCAN <prefix>:*:meta` when `queues` is
    * not provided.
    *
-   * - When `queues` is set explicitly, behaves like `new WorkbenchCore(opts)`.
+   * - When `queues` is set explicitly — including an explicit empty `[]` for a
+   *   non-BullMQ/degraded dashboard — behaves like `new WorkbenchCore(opts)`.
    * - When only `redis` is set, scans the connection for queues, caps at
    *   `maxQueues` (default 100) to avoid connection storms with very large
    *   deployments, and constructs the core with the resulting list.
@@ -124,7 +125,7 @@ export class WorkbenchCore {
    *   erroring out.
    */
   static async fromOptions(opts: WorkbenchOptions): Promise<WorkbenchCore> {
-    if (opts.queues?.length) {
+    if (opts.queues !== undefined) {
       return new WorkbenchCore(opts);
     }
     if (!opts.redis) {

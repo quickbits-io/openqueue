@@ -140,3 +140,25 @@ describe('WorkbenchCore with an explicit empty queue set', () => {
     expect(() => new WorkbenchCore({})).toThrow(/requires at least one queue/);
   });
 });
+
+describe('WorkbenchCore.fromOptions with an explicit empty queue set', () => {
+  it('builds the degraded core instead of demanding redis', async () => {
+    const core = await WorkbenchCore.fromOptions({ queues: [] });
+    expect(core.getConfig().queues).toEqual([]);
+  });
+
+  it('does not run redis discovery over an explicit empty set', async () => {
+    // Port 1: any discovery attempt would connect, fail, and reject.
+    const core = await WorkbenchCore.fromOptions({
+      queues: [],
+      redis: { port: 1 },
+    });
+    expect(core.getConfig().queues).toEqual([]);
+  });
+
+  it('still rejects when queues is wholly absent and redis is missing', async () => {
+    await expect(WorkbenchCore.fromOptions({})).rejects.toThrow(
+      /requires either/,
+    );
+  });
+});
