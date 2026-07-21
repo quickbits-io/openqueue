@@ -48,7 +48,14 @@ describe.skipIf(!url)('worldBullmq close resilience (real redis)', () => {
       });
       expect(owned).toBeDefined();
 
-      vi.spyOn(consumer.worker, 'close').mockRejectedValue(new Error('boom'));
+      // Drain the worker for real (so no Redis handle dangles into teardown as
+      // an unhandled rejection) but report the close as rejected, exercising
+      // the settle-then-rethrow path.
+      const drainWorker = consumer.worker.close.bind(consumer.worker);
+      vi.spyOn(consumer.worker, 'close').mockImplementationOnce(async () => {
+        await drainWorker();
+        throw new Error('boom');
+      });
 
       await expect(world.close()).rejects.toThrow('boom');
       // The world-owned duplicated consumer was still quit (quit settles after
