@@ -108,6 +108,12 @@ migration with an actionable message; `migrations: 'auto'` applies them on boot.
 See [Persistence](/docs/persistence) for the self-migrating world versus the
 bring-your-own-Drizzle `postgresAdapter` power-user path.
 
+Two OpenQueue namespaces sharing one database get **delivery** isolation only —
+the `jobs.namespace` column keeps their queues from stealing each other's work,
+but the durable catalog/schedules/runs tables live in the single `openqueue`
+schema and are **not** namespace-scoped. Run each deployment against its own
+database or schema for isolated durable history.
+
 ## Where worlds run
 
 - The **worker** instantiates the world, runs `world.start()`, and owns

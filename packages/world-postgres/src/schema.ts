@@ -18,6 +18,12 @@ import {
  * Postgres schema so it can share a database with a bring-your-own
  * `postgresAdapter` store on a disjoint schema.
  *
+ * Isolation is per-schema, not per-namespace: only `jobs` carries a `namespace`
+ * column, so two OpenQueue namespaces sharing this one `openqueue` schema get
+ * delivery isolation (they never steal each other's jobs) but NOT durable-store
+ * isolation — the catalog/schedules/runs tables are namespace-agnostic. Give
+ * each deployment its own schema (or database) for isolated durable state.
+ *
  * This module is the drizzle-kit generate input; the transport itself speaks
  * raw SQL (advisory locks, SKIP LOCKED, row-value predicates) rather than the
  * query builder, so `jobs` is defined here purely to emit the committed
