@@ -15,6 +15,7 @@ export interface NitroWorkerOptions {
 }
 
 let handle: WorkerAppHandle | undefined;
+let initialized = false;
 let closed = false;
 
 /**
@@ -27,6 +28,12 @@ export function createNitroWorkerPlugin(
   options: NitroWorkerOptions,
 ): (nitroApp: NitroAppLike) => Promise<void> {
   return async (nitroApp) => {
+    if (initialized) {
+      throw new Error(
+        'createNitroWorkerPlugin: one worker plugin per process; the artifact generates exactly one',
+      );
+    }
+    initialized = true;
     handle = await createWorkerApp(
       { ...options.config },
       { tasks: options.tasks },
