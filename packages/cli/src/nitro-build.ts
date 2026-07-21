@@ -114,6 +114,7 @@ export async function build(
   }
 
   await copyWorkbenchUi(packageDirs.get('@openqueue/workbench'), outDir);
+  await copyExtraFiles(config.build?.extraFiles ?? [], cwd, outDir);
 
   const queues = new Set(report.map((task) => task.queue));
   const schedules = report.filter((task) => task.cron !== null).length;
@@ -317,6 +318,30 @@ async function copyWorkbenchUi(
     join(outDir, 'server', 'dist', 'ui'),
   ]) {
     if (existsSync(target)) continue;
+    await mkdir(dirname(target), { recursive: true });
+    await cp(source, target, { recursive: true });
+  }
+}
+
+/**
+ * Copy `config.build.extraFiles` (runtime assets the config promises to include)
+ * into the artifact, preserving each entry's path relative to the project root.
+ * A listed file that does not exist fails the build rather than silently
+ * shipping an artifact missing it.
+ */
+export async function copyExtraFiles(
+  entries: string[],
+  cwd: string,
+  outDir: string,
+): Promise<void> {
+  for (const entry of entries) {
+    const source = resolve(cwd, entry);
+    if (!existsSync(source)) {
+      throw new Error(
+        `OpenQueue build: build.extraFiles entry "${entry}" does not exist`,
+      );
+    }
+    const target = join(outDir, relative(cwd, source));
     await mkdir(dirname(target), { recursive: true });
     await cp(source, target, { recursive: true });
   }
