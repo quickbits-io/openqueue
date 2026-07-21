@@ -49,6 +49,13 @@ PORT=8090 node .output/server/index.mjs
 Without `PORT`, a direct boot defaults to Nitro's port **3000** — set `PORT`
 explicitly (or use `openqueue start`, which injects it).
 
+### Sourcemaps
+
+`build: { sourcemap: true }` in `worker.config.ts` emits `.map` files alongside
+the bundle in `.output/server` — for error symbolication (e.g. a Sentry
+sourcemap upload). Maps are off by default and add tens of MB: upload them in
+CI, then strip `*.map` from the deployed image.
+
 ## Docker
 
 The repository ships a worker Dockerfile under `docker/worker`. The image

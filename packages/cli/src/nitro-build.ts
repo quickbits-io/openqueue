@@ -82,6 +82,8 @@ export async function build(
       buildDir: resolve(cwd, '.openqueue', 'nitro'),
       output: { dir: outDir },
       dev: false,
+      // Flows into the rolldown output; Nitro's production default is off.
+      sourcemap: config.build?.sourcemap ?? false,
       serverDir: false,
       scanDirs: [],
       publicAssets: [],

@@ -57,6 +57,10 @@ export interface OpenQueueConfig {
     outDir?: string;
     extraFiles?: string[];
     external?: string[];
+    /** Emit .map files alongside the artifact bundle (e.g. for Sentry
+     *  symbolication). Off by default — maps add tens of MB to `.output`;
+     *  upload them, then strip them from the deployed image. */
+    sourcemap?: boolean;
   };
 }
 
