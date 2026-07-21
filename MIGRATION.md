@@ -35,7 +35,11 @@ the worker into a self-contained Nitro **node-server bundle at `.output`**
 falls back to booting from source when it is absent — no config change needed.
 
 - The artifact runs on **Node `^20.19 || >=22.12` or Bun** (Nitro's floor, above
-  the package's own `>= 20.11.1`).
+  the package's own `>= 20.11.1`). `openqueue start` prefers a floor-satisfying
+  `node` from `PATH` and only falls back to Bun (its own runtime) when none is
+  found — Bun's node-compat has a heavier resident-memory profile for the
+  long-lived worker. It logs the chosen runtime (`[openqueue] artifact
+  runtime: …`).
 - Booting it directly with `node .output/server/index.mjs` defaults to **port
   3000** unless you set `PORT`; `openqueue start` injects `PORT`/`NITRO_PORT` so
   the worker's `8090` default is preserved.

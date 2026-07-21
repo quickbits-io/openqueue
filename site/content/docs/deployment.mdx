@@ -26,6 +26,17 @@ bunx openqueue start
 before exit. When no artifact exists it falls back to booting the worker from
 source. It injects `PORT`/`NITRO_PORT`, preserving the worker's `8090` default.
 
+The artifact is a Node bundle, so `start` runs it under a **`node` binary from
+`PATH`** when one satisfies the floor (`^20.19 || >=22.12`), falling back to Bun
+(the CLI's own runtime) when no suitable Node is found. It logs which it chose:
+
+```
+[openqueue] artifact runtime: Node v22.12.0 (/usr/local/bin/node)
+```
+
+Node is preferred because Bun's node-compat carries a heavier resident-memory
+profile for the long-lived worker; install Node in the runtime image to pin it.
+
 ### Running the artifact directly
 
 The `.output` bundle is a standard Nitro node-server; run it without the CLI on
@@ -41,8 +52,9 @@ explicitly (or use `openqueue start`, which injects it).
 ## Docker
 
 The repository ships a worker Dockerfile under `docker/worker`. The image
-runs `openqueue build` then `openqueue start` on Bun; the only required runtime
-input is `REDIS_URL`.
+runs `openqueue build` under Bun, then `openqueue start` — which runs the built
+artifact under Node when the image provides one, else Bun. The only required
+runtime input is `REDIS_URL`.
 
 ```dockerfile
 FROM oven/bun:1 AS base

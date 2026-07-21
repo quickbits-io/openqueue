@@ -61,9 +61,50 @@ function resolvePort(): number {
   return parsed;
 }
 
+/**
+ * The Nitro node-server bundle's runtime floor: `^20.19 || >=22.12` (Bun also
+ * runs it). True when a `node --version` string satisfies that range. Exported
+ * for testing. `21.x` and `22.0–22.11` fall in the gap between the two ranges.
+ */
+export function satisfiesNodeFloor(version: string): boolean {
+  const match = version.trim().match(/^v?(\d+)\.(\d+)/);
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  if (major === 20) return minor >= 19;
+  if (major === 22) return minor >= 12;
+  return major >= 23;
+}
+
+/**
+ * A PATH `node` that meets the artifact floor, or `null`. The CLI runs on Bun,
+ * so `process.execPath` is the Bun binary — but the artifact is a Node bundle,
+ * and Bun's node-compat carries a heavier RSS profile. Prefer real Node when it
+ * is present and new enough; ignore an absent or too-old one.
+ */
+function resolveNodeRuntime(): { path: string; version: string } | null {
+  const path = Bun.which('node');
+  if (!path) return null;
+  try {
+    const probe = Bun.spawnSync([path, '--version']);
+    if (!probe.success) return null;
+    const version = probe.stdout.toString().trim();
+    return satisfiesNodeFloor(version) ? { path, version } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function runArtifact(entry: string, cwd: string): Promise<void> {
   const port = resolvePort();
-  const child = Bun.spawn([process.execPath, entry], {
+  const node = resolveNodeRuntime();
+  const runtimeBin = node?.path ?? process.execPath;
+  console.log(
+    node
+      ? `[openqueue] artifact runtime: Node ${node.version} (${node.path})`
+      : `[openqueue] artifact runtime: Bun (${process.execPath}) — no Node ^20.19 || >=22.12 on PATH`,
+  );
+  const child = Bun.spawn([runtimeBin, entry], {
     cwd,
     stdin: 'inherit',
     stdout: 'inherit',
