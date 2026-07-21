@@ -501,6 +501,60 @@ describe.runIf(hasDb)('world-postgres transport (adversarial)', () => {
     await consumer.close();
     await transport.close();
   });
+
+  it('rejects a claim-scoped updateData once the lease is lost, so a stale progress cannot resurrect terminal history', async () => {
+    const queue = 'progress-fence';
+    const namespace = uniqueNamespace('progfence');
+    // Heartbeat off so nothing re-extends the lease we manually steal below.
+    const transport = createPostgresTransport({
+      sql,
+      namespace,
+      poll: { intervalMs: 25 },
+      stall: { heartbeatMs: 1_000_000 },
+    });
+    let updateError: unknown;
+    let done = false;
+    const errors: unknown[] = [];
+    const consumer = transport.consume(
+      queue,
+      baseOptions({
+        process: async (job) => {
+          // Simulate a peer reclaim: rotate this row's claim token out from
+          // under the running attempt, then try to persist progress data.
+          await sql`
+            update "openqueue"."jobs" set claim_id = 'peer-claim'
+            where namespace = ${namespace} and queue = ${queue} and id = 'p1'
+          `;
+          try {
+            await job.updateData({ touched: true });
+          } catch (err) {
+            updateError = err;
+          }
+          done = true;
+          return 'ok';
+        },
+        onError: (err) => errors.push(err),
+      }),
+    );
+
+    await transport.enqueue(queue, { id: 'p1', name: 'work', data: {} });
+    await waitFor(() => done, 8000);
+    await sleep(200);
+
+    expect(errors).toEqual([]);
+    // The lost-lease write rejected instead of silently matching zero rows —
+    // ctx.progress() aborts here rather than emit an `executing` snapshot.
+    expect(updateError).toBeInstanceOf(Error);
+    // The peer still owns the row; the stale attempt neither wrote nor settled.
+    const rows = await sql<{ claim_id: string }[]>`
+      select claim_id from "openqueue"."jobs"
+      where namespace = ${namespace} and queue = ${queue} and id = 'p1'
+    `;
+    expect(rows[0]?.claim_id).toBe('peer-claim');
+
+    await consumer.close();
+    await transport.close();
+  });
 });
 
 function sleep(ms: number): Promise<void> {

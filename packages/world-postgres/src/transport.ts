@@ -241,18 +241,24 @@ export function createPostgresTransport(
     return requeued.length > 0;
   }
 
+  // Claim-fenced like settlement: an `updateData`/progress write only lands
+  // while this attempt still owns the row. `false` means the lease was lost and
+  // a peer re-claimed — the caller must not proceed to emit a progress snapshot,
+  // which the run stores would let overwrite (resurrect) terminal history.
   async function persistData(
     queue: string,
     id: string,
     data: unknown,
     claimId: string,
-  ): Promise<void> {
-    await sql`
+  ): Promise<boolean> {
+    const updated = await sql`
       update "openqueue"."jobs"
       set data = ${jsonText(data)}::text::jsonb
       where namespace = ${namespace} and queue = ${queue} and id = ${id}
         and claim_id = ${claimId}
+      returning id
     `;
+    return updated.length > 0;
   }
 
   async function claim(queue: string, limit: number): Promise<ClaimedRow[]> {
@@ -340,7 +346,13 @@ export function createPostgresTransport(
       },
       updateData: async (data) => {
         state.data = data;
-        await persistData(queue, row.id, data, row.claim_id);
+        // A zero-row update means the lease was lost mid-attempt; throw so a
+        // stale `ctx.progress()` aborts before emitting an `executing` snapshot.
+        if (!(await persistData(queue, row.id, data, row.claim_id))) {
+          throw new Error(
+            `@openqueue/world-postgres: job "${row.id}" lost its claim before this update; a peer has reclaimed it`,
+          );
+        }
       },
       updateProgress: async () => undefined,
       log: async () => 0,
