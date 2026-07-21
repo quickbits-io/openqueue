@@ -3,7 +3,15 @@ import { cp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import type { OpenQueueConfig } from '@openqueue/core';
-import { discoverTaskFiles, loadTasksFromFiles } from './tasks';
+import { discoverTaskFiles } from './tasks';
+
+interface BootTaskReport {
+  id: string;
+  queue: string;
+  cron: string | null;
+}
+
+const BOOT_REPORT_MARKER = '__openqueue_boot_report__';
 
 /**
  * Every publishable `@openqueue/*` package. Nitro bundles the framework into
@@ -37,10 +45,6 @@ export async function build(
     throw new Error('OpenQueue build found no task files');
   }
 
-  // Fail fast: import + validate the task graph in-process so duplicate ids and
-  // load errors surface here, before the (much slower) Nitro build.
-  const tasks = await loadTasksFromFiles(taskFiles, cwd);
-
   // The boot plugin lives outside Nitro's buildDir, which prepare() cleans.
   const generatedDir = resolve(cwd, '.openqueue', 'generated');
   const bootPath = join(generatedDir, 'boot.mjs');
@@ -55,7 +59,14 @@ export async function build(
   // install already resolves them, so this is a no-op there. Once bundled, the
   // artifact carries them inline; the links are removed afterward.
   const links = await linkWorkspacePackages(cwd, packageDirs);
+  let report: BootTaskReport[];
   try {
+    // Validate the build by executing the generated boot module in a fresh
+    // subprocess — the exact code path (and ordering) the artifact runs, so the
+    // census is correct no matter what the config imports. Dup ids, load errors,
+    // and config errors throw at module top level → non-zero exit → build fails.
+    report = await runBootCheck(bootPath, cwd);
+
     const {
       build: buildNitro,
       copyPublicAssets,
@@ -104,12 +115,53 @@ export async function build(
 
   await copyWorkbenchUi(packageDirs.get('@openqueue/workbench'), outDir);
 
-  const queues = new Set(tasks.map((task) => task.queue));
-  const schedules = tasks.filter((task) => task.cron).length;
+  const queues = new Set(report.map((task) => task.queue));
+  const schedules = report.filter((task) => task.cron !== null).length;
   const size = await directorySize(outDir);
   console.log(
-    `OpenQueue build wrote ${tasks.length} tasks, ${queues.size} queues, ${schedules} schedules, ${formatBytes(size)} to ${outDir}`,
+    `OpenQueue build wrote ${report.length} tasks, ${queues.size} queues, ${schedules} schedules, ${formatBytes(size)} to ${outDir}`,
   );
+}
+
+/**
+ * Execute the generated boot module in a fresh subprocess under the current
+ * runtime (Bun compiles the config + task TS). In check mode it clears the
+ * registry, imports the task files, snapshots, imports the config, then reports
+ * the census and exits — without booting anything. A validation failure exits
+ * non-zero and its output is surfaced.
+ */
+async function runBootCheck(
+  bootPath: string,
+  cwd: string,
+): Promise<BootTaskReport[]> {
+  const child = Bun.spawn([process.execPath, bootPath], {
+    cwd,
+    env: { ...process.env, OPENQUEUE_BOOT_CHECK: '1' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  if (code !== 0) {
+    throw new Error(
+      `OpenQueue build failed while validating tasks:\n${(stderr || stdout).trim()}`,
+    );
+  }
+  const line = stdout
+    .split('\n')
+    .find((entry) => entry.startsWith(BOOT_REPORT_MARKER));
+  if (line === undefined) {
+    throw new Error(
+      `OpenQueue build produced no task report:\n${(stdout + stderr).trim()}`,
+    );
+  }
+  const report: BootTaskReport[] = JSON.parse(
+    line.slice(BOOT_REPORT_MARKER.length),
+  );
+  return report;
 }
 
 /**
@@ -219,6 +271,23 @@ ${blocks}
 const tasks = validateTaskDefinitions(getRegisteredTasks());
 // Imported after the snapshot, dynamically: see bootSource() in nitro-build.ts.
 const { default: config } = await import(${configSpecifier});
+
+// Build-check mode (openqueue build): the task snapshot and the config import are
+// both exercised above, so this reports the true census and exits before the
+// plugin is created. Never set in the artifact.
+if (process.env.OPENQUEUE_BOOT_CHECK) {
+  console.log(
+    ${JSON.stringify(BOOT_REPORT_MARKER)} +
+      JSON.stringify(
+        tasks.map((task) => ({
+          id: task.id,
+          queue: task.queue,
+          cron: task.cron ?? null,
+        })),
+      ),
+  );
+  process.exit(0);
+}
 
 export default createNitroWorkerPlugin({ config, tasks });
 `;

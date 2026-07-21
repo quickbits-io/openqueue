@@ -1,7 +1,6 @@
 import { relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  clearRegisteredTasks,
   clearTaskDiscoveryContext,
   defaultTaskDiscoveryExclude,
   getRegisteredTasks,
@@ -55,13 +54,19 @@ async function loadTaskModule(
 
 /**
  * Import each discovered file under a discovery context so the tasks it
- * registers carry a stable source label, then snapshot the process registry.
+ * registers carry a stable source label, then snapshot the full registry.
+ *
+ * Deliberately does NOT clear the registry first: a config that statically
+ * imports its own task files registers them before discovery runs, so a
+ * clear+reimport would re-import the now-cached modules with no side effect and
+ * yield zero tasks. Importing (registering anything new) then reading the whole
+ * registry unions the config's imports with discovery; `validateTaskDefinitions`
+ * still fails genuine duplicate ids.
  */
 export async function loadTasksFromFiles(
   files: string[],
   cwd: string,
 ): Promise<TaskDefinition[]> {
-  clearRegisteredTasks();
   for (const file of files) {
     setTaskDiscoveryContext(relative(cwd, file).replaceAll('\\', '/'));
     try {

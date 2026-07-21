@@ -7,6 +7,7 @@
  * of a job that outlasts srvx's 5s graceful-shutdown window.
  */
 import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,11 +85,28 @@ async function main(): Promise<void> {
     {
       cwd: repoRoot,
       env: { ...process.env, REDIS_URL },
-      stdout: 'inherit',
-      stderr: 'inherit',
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
   );
-  assert((await build.exited) === 0, 'openqueue build failed');
+  const [buildOut, buildErr, buildCode] = await Promise.all([
+    new Response(build.stdout).text(),
+    new Response(build.stderr).text(),
+    build.exited,
+  ]);
+  process.stdout.write(buildOut);
+  assert(buildCode === 0, `openqueue build failed:\n${buildErr}`);
+  // The fixture config statically imports its task, so a census that clears +
+  // reimports (or an artifact with the wrong config-import ordering) would print
+  // "0 tasks". Assert the boot-check census counted it.
+  const summary = `${buildOut}\n${buildErr}`
+    .split('\n')
+    .find((line) => line.includes('OpenQueue build wrote'));
+  assert(
+    summary?.includes('wrote 1 tasks') === true,
+    `build census should report 1 task, got: ${summary ?? '(no summary)'}`,
+  );
+  console.log('[smoke] build census reports 1 task');
   const entry = join(fixtureDir, '.output', 'server', 'index.mjs');
   assert(existsSync(entry), `missing artifact entry ${entry}`);
 
@@ -243,9 +261,66 @@ async function main(): Promise<void> {
       `[smoke] drain ok: job completed, exit=${exit} ${Date.now() - sigAt}ms after SIGTERM`,
     );
 
+    // 9. Source-boot paths must resolve a task-importing config too — the runtime
+    //    counterpart of the census fix. Remove the artifact so `start` falls back
+    //    to source; `dev-worker` always boots from source.
+    await rm(join(fixtureDir, '.output'), { recursive: true, force: true });
+    await assertSourceBoot('start');
+    await assertSourceBoot('dev-worker');
+
     console.log('SMOKE PASSED');
   } finally {
     child.kill('SIGKILL');
+  }
+}
+
+/**
+ * Boot the fixture from source via `openqueue <command>` and assert it resolves
+ * the task — the config statically imports it, which a clear+reimport or
+ * snapshot-delta discovery would drop to zero.
+ */
+async function assertSourceBoot(
+  command: 'start' | 'dev-worker',
+): Promise<void> {
+  const port = await freePort();
+  const worker = Bun.spawn(
+    [process.execPath, cliDist, command, '--config', 'worker.config.ts'],
+    {
+      cwd: fixtureDir,
+      env: { ...process.env, REDIS_URL, PORT: String(port) },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  let out = '';
+  pump(worker.stdout, (text) => {
+    out += text;
+  });
+  pump(worker.stderr, (text) => {
+    out += text;
+  });
+  try {
+    const healthy = await until(async () => {
+      try {
+        return (await fetch(`http://127.0.0.1:${port}/health`)).ok;
+      } catch {
+        return false;
+      }
+    }, HEALTH_DEADLINE_MS);
+    assert(healthy, `${command} source boot did not become healthy:\n${out}`);
+    const info = await createClient({
+      host: `http://127.0.0.1:${port}`,
+      auth: { bearer: TOKEN },
+    }).info();
+    assert(
+      info.tasks >= 1,
+      `${command} source boot reported ${info.tasks} tasks (its config statically imports the task)`,
+    );
+    console.log(`[smoke] ${command} source boot ok: info.tasks=${info.tasks}`);
+  } finally {
+    worker.kill('SIGTERM');
+    await Promise.race([worker.exited, sleep(5_000)]);
+    worker.kill('SIGKILL');
   }
 }
 
