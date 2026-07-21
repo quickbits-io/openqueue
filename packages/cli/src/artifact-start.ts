@@ -46,8 +46,23 @@ export async function startFromSource(
   });
 }
 
+/** The worker's default port, or a validated `PORT`. Fails fast on garbage so a
+ *  non-numeric value can't silently become `NITRO_PORT=NaN` + a 60s poll to
+ *  nowhere. */
+function resolvePort(): number {
+  const raw = process.env.PORT;
+  if (raw === undefined || raw.trim() === '') return 8090;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    throw new Error(
+      `Invalid PORT "${raw}": expected an integer between 0 and 65535.`,
+    );
+  }
+  return parsed;
+}
+
 async function runArtifact(entry: string, cwd: string): Promise<void> {
-  const port = Number(process.env.PORT ?? 8090);
+  const port = resolvePort();
   const child = Bun.spawn([process.execPath, entry], {
     cwd,
     stdin: 'inherit',

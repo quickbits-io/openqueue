@@ -76,6 +76,13 @@ export async function build(
       publicAssets: [],
       features: { websocket: false },
       plugins: [bootPath],
+      // Keep author-declared heavy deps out of the bundle: externalize-and-trace
+      // them into server/node_modules. `traceDeps` is an include allowlist, so an
+      // empty/absent list bundles everything (the framework included, deduped to
+      // one @openqueue/core). Regular npm deps resolve to a `node_modules/<name>`
+      // path that Nitro's path-matching honors; symlinked workspace packages do
+      // not (their realpath loses the name), which is why the framework is bundled.
+      traceDeps: config.build?.external,
     });
     // One catch-all delegating every request to the same h3 app the embedded
     // worker serves — the artifact's HTTP surface is the same code by construction.
