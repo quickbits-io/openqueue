@@ -17,11 +17,15 @@ import {
   runFromSnapshot,
 } from './filter';
 
+/** Retained-run ceiling, matching the Redis state store's `maxCachedRuns`. */
+const MAX_CACHED_RUNS = 5000;
+
 /**
  * In-memory {@link QueueStorage} mirroring the Redis state store's semantics
  * exactly (dedup-key upsert on create, field-merge patch on update, deep-meta
- * filtering, name-sorted alerts) so world-local and world-bullmq share one
- * behaviour. Not part of the public package surface; composed behind a world.
+ * filtering, name-sorted alerts, a {@link MAX_CACHED_RUNS}-bounded run cache) so
+ * world-local and world-bullmq share one behaviour. Not part of the public
+ * package surface; composed behind a world.
  */
 export function memoryQueueStorage(): QueueStorage {
   const catalog = memoryQueueCatalogStore();
@@ -46,7 +50,15 @@ export function memoryQueueStorage(): QueueStorage {
       ) {
         return;
       }
+      // Delete-then-set moves a touched run to the end of insertion order, so the
+      // oldest untouched run sits first — evicted once the cache overflows. This
+      // caps memory the way the Redis store's zset prune does (keep newest N).
+      runs.delete(event.run.id);
       runs.set(event.run.id, runFromSnapshot(event.run));
+      if (runs.size > MAX_CACHED_RUNS) {
+        const oldest = runs.keys().next().value;
+        if (oldest !== undefined) runs.delete(oldest);
+      }
     },
   };
 }
