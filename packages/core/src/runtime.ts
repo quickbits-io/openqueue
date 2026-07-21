@@ -81,54 +81,64 @@ export async function createQueueWorkerFromWorld(
 ): Promise<QueueWorkerRuntime> {
   const namespace = resolveNamespace(options);
   const { store, transport } = world;
-  await world.start?.();
+  // A failed boot must not leak the world's resources: `world.start()` (or a
+  // later publish/schedule-sync/consumer-start step) can throw after the world
+  // opened DB/Redis handles — e.g. `worldPostgres` in manual-migration mode
+  // opens a client, then reports pending migrations. Close the world before
+  // rethrowing so programmatic boots and tests don't leak connections.
+  try {
+    await world.start?.();
 
-  const parts = composeWorldRuntime(world, options);
-  configureEnqueueTransport({ transport, drain: parts.drain });
+    const parts = composeWorldRuntime(world, options);
+    configureEnqueueTransport({ transport, drain: parts.drain });
 
-  const tasks = options.tasks;
-  const catalog = queueCatalogEntries(tasks);
-  await store.publish(catalog);
+    const tasks = options.tasks;
+    const catalog = queueCatalogEntries(tasks);
+    await store.publish(catalog);
 
-  const { trigger, schedules, runs } = parts;
-  bindQueueRuntime({ trigger, schedules });
-  await syncDeclarativeSchedules(tasks, schedules);
+    const { trigger, schedules, runs } = parts;
+    bindQueueRuntime({ trigger, schedules });
+    await syncDeclarativeSchedules(tasks, schedules);
 
-  const workerTasks = [
-    ...tasks,
-    scheduleTickJob(schedules, namespace),
-  ] as TaskDefinition[];
+    const workerTasks = [
+      ...tasks,
+      scheduleTickJob(schedules, namespace),
+    ] as TaskDefinition[];
 
-  if (store.spans) attachSpanStore(store.spans);
+    if (store.spans) attachSpanStore(store.spans);
 
-  const consumers = createWorkerConsumers(workerTasks, transport, {
-    drain: parts.drain,
-    // This runtime's own trigger, so `ctx.trigger` enqueues into this world
-    // rather than whichever runtime last called `bindQueueRuntime`.
-    trigger,
-    globalConcurrency: options.globalConcurrency,
-    queueConcurrency: options.queueConcurrency,
-  });
+    const consumers = createWorkerConsumers(workerTasks, transport, {
+      drain: parts.drain,
+      // This runtime's own trigger, so `ctx.trigger` enqueues into this world
+      // rather than whichever runtime last called `bindQueueRuntime`.
+      trigger,
+      globalConcurrency: options.globalConcurrency,
+      queueConcurrency: options.queueConcurrency,
+    });
 
-  const runtime: QueueWorkerRuntime = {
-    tasks,
-    catalog,
-    transport,
-    consumers,
-    trigger,
-    schedules,
-    runs,
-    spans: store.spans,
-    alerts: store.alerts,
-    close: async () => {
-      await Promise.all(consumers.map((consumer) => consumer.close()));
-      await parts.close();
-      await options.onClose?.();
-    },
-  };
+    const runtime: QueueWorkerRuntime = {
+      tasks,
+      catalog,
+      transport,
+      consumers,
+      trigger,
+      schedules,
+      runs,
+      spans: store.spans,
+      alerts: store.alerts,
+      close: async () => {
+        await Promise.all(consumers.map((consumer) => consumer.close()));
+        await parts.close();
+        await options.onClose?.();
+      },
+    };
 
-  bindQueueRuntime(runtime);
-  return runtime;
+    bindQueueRuntime(runtime);
+    return runtime;
+  } catch (err) {
+    await world.close().catch(() => undefined);
+    throw err;
+  }
 }
 
 async function syncDeclarativeSchedules(
