@@ -12,7 +12,7 @@ import { composeDrains } from './compose';
 import { isNonRetryable, NonRetryableError, serializeError } from './errors';
 import { withJobLogs } from './job-logs';
 import { consoleLogger } from './logger';
-import { buildSnapshot } from './snapshot';
+import { buildSnapshot, unwrapInput } from './snapshot';
 import { withRunContext } from './span-export';
 import { trigger as moduleTrigger } from './task';
 import type {
@@ -321,13 +321,6 @@ async function forceFlush(): Promise<void> {
   };
   const target = provider.getDelegate?.() ?? provider;
   await target.forceFlush?.().catch(() => undefined);
-}
-
-function unwrapInput(data: unknown): unknown {
-  if (data && typeof data === 'object' && '__input' in data) {
-    return (data as { __input: unknown }).__input;
-  }
-  return data;
 }
 
 function flattenProgress(patch: unknown): Attributes {
