@@ -34,6 +34,7 @@ interface HttpOptions {
   host: string;
   auth?: ClientAuth;
   fetch?: FetchLike;
+  timeoutMs?: number;
 }
 
 interface RequestArgs<T> {
@@ -54,6 +55,7 @@ export interface Http {
 export function createHttp(options: HttpOptions): Http {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const host = options.host.replace(/\/$/, '');
+  const timeoutMs = options.timeoutMs ?? 10_000;
 
   const resolveAuthorization = async (): Promise<string | undefined> => {
     const auth = options.auth;
@@ -95,6 +97,7 @@ export function createHttp(options: HttpOptions): Http {
         method: args.method,
         headers,
         body: args.body === undefined ? undefined : JSON.stringify(args.body),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (cause) {
       throw new OpenQueueClientError(

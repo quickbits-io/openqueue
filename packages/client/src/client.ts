@@ -40,6 +40,8 @@ export interface ClientOptions {
   auth?: ClientAuth;
   /** Custom fetch (tests, instrumented runtimes). Defaults to globalThis.fetch. */
   fetch?: FetchLike;
+  /** Per-request timeout in milliseconds. Defaults to 10 seconds. */
+  timeoutMs?: number;
 }
 
 export interface OpenQueueClient {
@@ -89,6 +91,7 @@ export function createClient(options: ClientOptions): OpenQueueClient {
     host: options.host,
     auth: options.auth,
     fetch: options.fetch,
+    timeoutMs: options.timeoutMs,
   });
 
   const runs: OpenQueueClient['runs'] = {
