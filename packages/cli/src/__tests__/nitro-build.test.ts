@@ -39,4 +39,18 @@ describe('copyExtraFiles', () => {
       copyExtraFiles(['missing.txt'], root, join(root, '.output')),
     ).rejects.toThrow('does not exist');
   });
+
+  test('rejects a `../` entry that escapes the project root', async () => {
+    const root = await createRoot();
+    await expect(
+      copyExtraFiles(['../escape.txt'], root, join(root, '.output')),
+    ).rejects.toThrow('outside the project root');
+  });
+
+  test('rejects an absolute entry outside the project root', async () => {
+    const root = await createRoot();
+    await expect(
+      copyExtraFiles(['/etc/hosts'], root, join(root, '.output')),
+    ).rejects.toThrow('outside the project root');
+  });
 });

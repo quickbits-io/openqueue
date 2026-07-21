@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { cp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { OpenQueueConfig } from '@openqueue/core';
 import { discoverTaskFiles } from './tasks';
 
@@ -336,12 +336,22 @@ export async function copyExtraFiles(
 ): Promise<void> {
   for (const entry of entries) {
     const source = resolve(cwd, entry);
+    const rel = relative(cwd, source);
+    // An absolute path or a `../` entry escapes the artifact: `join(outDir, rel)`
+    // would land the copy outside `.output` (silently missing from the artifact,
+    // and possibly clobbering a sibling path). Only files under the project root
+    // preserve a safe relative target.
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+      throw new Error(
+        `OpenQueue build: build.extraFiles entry "${entry}" resolves outside the project root; only files under it can be copied into the artifact`,
+      );
+    }
     if (!existsSync(source)) {
       throw new Error(
         `OpenQueue build: build.extraFiles entry "${entry}" does not exist`,
       );
     }
-    const target = join(outDir, relative(cwd, source));
+    const target = join(outDir, rel);
     await mkdir(dirname(target), { recursive: true });
     await cp(source, target, { recursive: true });
   }
