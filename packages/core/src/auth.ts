@@ -297,7 +297,9 @@ function parseBasicHeader(
 // ---------------------------------------------------------------------------
 
 export interface JwtClaimMatchers {
-  /** AWS IAM-style `*` whole-string wildcards against `sub`. */
+  /** Claim used as the principal subject. Defaults to `sub`. */
+  subjectClaim?: string;
+  /** AWS IAM-style `*` whole-string wildcards against the principal subject. */
   subjects?: readonly string[];
   /** Each named claim must contain at least one listed value. */
   claims?: Readonly<Record<string, readonly string[]>>;
@@ -533,7 +535,8 @@ function finishJwtVerification(
   options: JwtClaimMatchers & { issuer: string; tenantClaim?: string },
   authenticator: string,
 ): VerifyResult {
-  if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
+  const subject = payload[options.subjectClaim ?? 'sub'];
+  if (typeof subject !== 'string' || subject.length === 0) {
     return { ok: false };
   }
   if (!matchersSatisfied(payload, options)) return { ok: false };
@@ -551,7 +554,6 @@ function finishJwtVerification(
     typeof payload.iss === 'string' && payload.iss.length > 0
       ? payload.iss
       : options.issuer;
-  const subject = payload.sub;
   const principal: Principal = {
     authenticator,
     principalId: `${issuer}:${subject}`,
@@ -570,7 +572,8 @@ function matchersSatisfied(
 ): boolean {
   const claims = normalizeStringClaims(payload);
   if (matchers.subjects !== undefined) {
-    const subject = typeof payload.sub === 'string' ? payload.sub : null;
+    const value = payload[matchers.subjectClaim ?? 'sub'];
+    const subject = typeof value === 'string' ? value : null;
     if (
       subject === null ||
       !matchers.subjects.some((pattern) => matchesWildcard(pattern, subject))
