@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Core engine for OpenQueue — typed tasks, queues, schedules, flows, and Drizzle persistence over a pluggable world (delivery transport + durable store).",
   "license": "MIT",
   "type": "module",

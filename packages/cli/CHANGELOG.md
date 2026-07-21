@@ -1,5 +1,12 @@
 # @openqueue/cli
 
+## [1.1.0](https://github.com/quickbits-io/openqueue/compare/cli-v1.0.0...cli-v1.1.0) (2026-07-21)
+
+
+### Features
+
+* **cli:** sourcemap option for the Nitro artifact build ([e8c9276](https://github.com/quickbits-io/openqueue/commit/e8c92767b2b7fa9348a17c19633311c450ff01c1))
+
 ## [1.0.0](https://github.com/quickbits-io/openqueue/compare/cli-v0.1.4...cli-v1.0.0) (2026-07-21)
 
 

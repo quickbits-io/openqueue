@@ -1,5 +1,12 @@
 # @openqueue/workbench
 
+## [1.1.0](https://github.com/quickbits-io/openqueue/compare/workbench-v1.0.0...workbench-v1.1.0) (2026-07-21)
+
+
+### Miscellaneous Chores
+
+* **workbench:** Synchronize openqueue versions
+
 ## [1.0.0](https://github.com/quickbits-io/openqueue/compare/workbench-v0.1.4...workbench-v1.0.0) (2026-07-21)
 
 
