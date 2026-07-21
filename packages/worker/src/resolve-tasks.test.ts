@@ -70,4 +70,33 @@ export const tasks = [
 
     await handle.close();
   });
+
+  it('accepts a task module whose default export is a single task definition', async () => {
+    const root = await createRoot();
+    await writeFile(
+      join(root, 'single-task.ts'),
+      `import { task } from '@openqueue/core';
+export default task({
+  id: 'rt-single',
+  queue: 'default',
+  run: async () => ({ ok: true }),
+});
+`,
+    );
+
+    const handle = await createWorkerApp(
+      {
+        namespace: 'resolve-tasks-single',
+        world: worldLocal(),
+        tasks: [{ module: 'single-task.ts' }],
+      },
+      { cwd: root },
+    );
+
+    expect(handle.runtime.tasks.map((entry) => entry.id)).toContain(
+      'rt-single',
+    );
+
+    await handle.close();
+  });
 });

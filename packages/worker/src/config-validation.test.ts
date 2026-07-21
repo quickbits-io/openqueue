@@ -92,6 +92,30 @@ describe('validateConfig accepts a world-only config', () => {
   });
 });
 
+describe('validateConfig honors programmatic tasks', () => {
+  const noop = task({
+    id: 'programmatic-tasks-noop',
+    queue: 'noop',
+    run: async () => undefined,
+  });
+
+  it('boots a config with neither dirs nor tasks when tasks come from options', async () => {
+    const handle = await createWorkerApp(
+      {
+        namespace: 'programmatic',
+        world: worldLocal(),
+      },
+      { tasks: [noop] },
+    );
+
+    expect(handle.runtime.tasks.map((entry) => entry.id)).toContain(
+      'programmatic-tasks-noop',
+    );
+
+    await handle.close();
+  });
+});
+
 describe('createWorkbenchForRuntime base path', () => {
   const noop = task({
     id: 'base-path-noop',

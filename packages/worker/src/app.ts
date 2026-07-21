@@ -60,7 +60,7 @@ export async function createWorkerApp(
   config: OpenQueueConfig,
   options: CreateWorkerAppOptions = {},
 ): Promise<WorkerAppHandle> {
-  const world = validateConfig(config);
+  const world = validateConfig(config, options.tasks !== undefined);
   const cwd = options.cwd ?? configDirs.get(config) ?? process.cwd();
   const tasks = options.tasks ?? (await resolveTasks(config, cwd));
   const drains = [consoleDrain(), ...(config.drains ?? [])];
@@ -144,7 +144,10 @@ export async function createWorkerApp(
  * The `redis` sugar becomes `worldBullmq({ url, prefix, storage })` — the sole
  * place the worker reaches for `@openqueue/world-bullmq`.
  */
-function validateConfig(config: OpenQueueConfig): WorldFactory {
+function validateConfig(
+  config: OpenQueueConfig,
+  hasExplicitTasks: boolean,
+): WorldFactory {
   if (!config.namespace?.trim()) {
     throw new Error('OpenQueue config requires namespace');
   }
@@ -153,7 +156,9 @@ function validateConfig(config: OpenQueueConfig): WorldFactory {
   }
   const hasDirs = Array.isArray(config.dirs) && config.dirs.length > 0;
   const hasTasks = Boolean(config.tasks);
-  if (!hasDirs && !hasTasks) {
+  // A programmatic caller can supply tasks through the options, so config-level
+  // `dirs`/`tasks` are only required when discovery must resolve them itself.
+  if (!hasDirs && !hasTasks && !hasExplicitTasks) {
     throw new Error('OpenQueue config requires dirs or tasks');
   }
   const basePath = config.workbench?.basePath;
@@ -284,7 +289,32 @@ async function loadTaskModule(
     pathToFileURL(resolve(cwd, source.module)).href
   )) as Record<string, unknown>;
   const value = exportedValue(mod, source);
-  return loadQueueTasks(value as QueueTaskDiscovery | TaskDefinition[]);
+  return loadQueueTasks(normalizeTaskExport(value));
+}
+
+/**
+ * A task module may export a discovery object, an array of task definitions, or
+ * a single `task(...)` definition. `loadQueueTasks` accepts the first two;
+ * wrap a lone definition so it isn't mistaken for a `cwd`-less discovery (which
+ * would scan an undefined directory) — the same single-export shape the CLI's
+ * direct loader already accepts.
+ */
+function normalizeTaskExport(
+  value: unknown,
+): QueueTaskDiscovery | TaskDefinition[] {
+  if (isTaskDiscovery(value)) return value;
+  const list = Array.isArray(value) ? value : [value];
+  return list as TaskDefinition[];
+}
+
+function isTaskDiscovery(value: unknown): value is QueueTaskDiscovery {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'cwd' in value &&
+    'include' in value &&
+    Array.isArray((value as QueueTaskDiscovery).include)
+  );
 }
 
 function taskModules(
