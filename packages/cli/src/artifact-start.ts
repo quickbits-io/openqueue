@@ -48,14 +48,17 @@ export async function startFromSource(
 
 /** The worker's default port, or a validated `PORT`. Fails fast on garbage so a
  *  non-numeric value can't silently become `NITRO_PORT=NaN` + a 60s poll to
- *  nowhere. */
-function resolvePort(): number {
+ *  nowhere, and rejects `0`: the artifact runs in a subprocess and the CLI must
+ *  health-poll a known port, so an OS-assigned ephemeral port is unreachable
+ *  here (the source boot path handles `port: 0` separately). Exported for
+ *  testing. */
+export function resolvePort(): number {
   const raw = process.env.PORT;
   if (raw === undefined || raw.trim() === '') return 8090;
   const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
     throw new Error(
-      `Invalid PORT "${raw}": expected an integer between 0 and 65535.`,
+      `Invalid PORT "${raw}": expected an integer between 1 and 65535.`,
     );
   }
   return parsed;
