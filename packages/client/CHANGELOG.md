@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/quickbits-io/openqueue/compare/client-v1.0.0...client-v1.1.0) (2026-07-21)
+
+
+### Miscellaneous Chores
+
+* **client:** Synchronize openqueue versions
+
 ## [1.0.0](https://github.com/quickbits-io/openqueue/compare/client-v0.1.4...client-v1.0.0) (2026-07-21)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/world-bullmq",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "The BullMQ world for OpenQueue — a Redis-backed delivery transport paired with a write-through durable state store. The default OpenQueue delivery path.",
   "license": "MIT",
   "type": "module",
