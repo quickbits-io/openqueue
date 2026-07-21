@@ -4,6 +4,7 @@ import {
   consoleDrain,
   createQueueWorker,
   defineQueueTasks,
+  getRegisteredTasks,
   loadQueueTasks,
   type OpenQueueConfig,
   type QueueCatalogEntry,
@@ -248,28 +249,29 @@ async function resolveTasks(
     return validateTaskDefinitions(loaded.flat());
   }
 
-  const loaded: TaskDefinition[] = [];
   for (const dir of config.dirs ?? []) {
-    loaded.push(
-      ...(await loadQueueTasks(
-        defineQueueTasks({
-          cwd: resolve(cwd, dir),
-          include: [
-            '**/*.ts',
-            '**/*.tsx',
-            '**/*.mts',
-            '**/*.cts',
-            '**/*.js',
-            '**/*.jsx',
-            '**/*.mjs',
-            '**/*.cjs',
-          ],
-          exclude: config.exclude,
-        }),
-      )),
+    // Side effect only: import the dir's task files, registering anything new.
+    await loadQueueTasks(
+      defineQueueTasks({
+        cwd: resolve(cwd, dir),
+        include: [
+          '**/*.ts',
+          '**/*.tsx',
+          '**/*.mts',
+          '**/*.cts',
+          '**/*.js',
+          '**/*.jsx',
+          '**/*.mjs',
+          '**/*.cjs',
+        ],
+        exclude: config.exclude,
+      }),
     );
   }
-  return validateTaskDefinitions(loaded);
+  // Read the full registry, not loadQueueTasks' newly-registered delta: a config
+  // that statically imports its task files registers them before discovery runs,
+  // so the delta would be empty. validateTaskDefinitions dedups/validates by id.
+  return validateTaskDefinitions(getRegisteredTasks());
 }
 
 async function loadTaskModule(
