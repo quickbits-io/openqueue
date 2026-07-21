@@ -85,6 +85,15 @@ OPENQUEUE_NAMESPACE=my-app
   );
   await writeIfMissing('Dockerfile', await dockerfileTemplate());
   await writeIfMissing(
+    '.gitignore',
+    `node_modules/
+.output
+.openqueue
+.env
+!.env.example
+`,
+  );
+  await writeIfMissing(
     'worker/example.ts',
     `import { task } from '@openqueue/sdk';
 import { z } from 'zod';
@@ -525,9 +534,9 @@ async function updatePackageJson(): Promise<void> {
       : {};
   pkg.dependencies = {
     ...dependencies,
-    '@openqueue/sdk': dependencies['@openqueue/sdk'] ?? 'latest',
-    '@openqueue/cli': dependencies['@openqueue/cli'] ?? 'latest',
-    zod: dependencies.zod ?? 'latest',
+    '@openqueue/sdk': dependencies['@openqueue/sdk'] ?? '^1.0.0',
+    '@openqueue/cli': dependencies['@openqueue/cli'] ?? '^1.0.0',
+    zod: dependencies.zod ?? '^4.1.13',
   };
 
   await writeFile(path, `${JSON.stringify(pkg, null, 2)}\n`);
