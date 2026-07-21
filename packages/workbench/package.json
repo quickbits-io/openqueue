@@ -109,7 +109,7 @@
     "lru-cache": "^11.2.7",
     "lucide-react": "^0.555.0",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3",
+    "react-dom": "^19.2.7",
     "recharts": "^2.15.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.5.5",
