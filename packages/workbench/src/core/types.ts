@@ -26,6 +26,8 @@ export interface WorkbenchSchema<I = unknown> {
 }
 
 export interface WorkbenchJobDefinition<I = unknown, O = unknown> {
+  /** Canonical catalog task id — what string triggers resolve against. */
+  id: string;
   name: string;
   queue: string;
   schema?: WorkbenchSchema<I>;

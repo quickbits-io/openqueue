@@ -16,6 +16,7 @@ import { WorkbenchCore } from './workbench';
 
 function job(): WorkbenchJobDefinition {
   return {
+    id: 'ping',
     name: 'ping',
     queue: 'system',
     description: 'Ping.',

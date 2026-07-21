@@ -21,6 +21,7 @@ function queue(name: string): Queue {
 
 function job(): WorkbenchJobDefinition {
   return {
+    id: 'send-message',
     name: 'send-message',
     queue: 'system',
     schema: jobSchema,
