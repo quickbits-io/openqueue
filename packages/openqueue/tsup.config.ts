@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsup';
 
-export default defineConfig({
+export default defineConfig((options) => ({
   entry: {
     index: 'src/index.ts',
     client: 'src/client.ts',
@@ -8,7 +8,7 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   sourcemap: true,
-  clean: true,
+  clean: !options.watch,
   treeshake: true,
-  target: 'node18',
-});
+  target: 'node20',
+}));

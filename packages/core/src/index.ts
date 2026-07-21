@@ -1,22 +1,41 @@
+export type {
+  ApiKeyOptions,
+  AuthChallenge,
+  AuthDenialOptions,
+  AuthResult,
+  AuthStrategy,
+  HttpBasicOptions,
+  JwtClaimMatchers,
+  JwtHmacOptions,
+  OidcOptions,
+  Principal,
+  VerifyResult,
+} from './auth';
+export {
+  apiKey,
+  authenticate,
+  extractBearerToken,
+  ForbiddenError,
+  httpBasic,
+  isLoopbackRequest,
+  jwtHmac,
+  localDev,
+  none,
+  oidc,
+  UnauthenticatedError,
+  verifyApiKey,
+  verifyHttpBasic,
+  verifyJwtHmac,
+  verifyOidc,
+} from './auth';
 export {
   catalogEntryDefinition,
   memoryQueueCatalogStore,
-  publishQueueCatalog,
-  queueCatalogKey,
-  queueCatalogPublishedAtKey,
-  readQueueCatalog,
-  resolveQueueCatalogTask,
   taskCatalogEntry,
 } from './catalog';
 export { composeDrains } from './compose';
-export type {
-  OpenQueueConfig,
-  QueueConfig,
-  QueueConfigTaskModule,
-} from './config';
+export type { OpenQueueConfig, QueueConfigTaskModule } from './config';
 export { defineConfig } from './config';
-export type { QueueConnection } from './connection';
-export { closeConnection, createConnection } from './connection';
 export type { QueueTaskDiscovery } from './discovery';
 export {
   defaultTaskDiscoveryExclude,
@@ -36,7 +55,7 @@ export {
   postgresAdapter,
   postgresAlertStore,
 } from './drizzle';
-export { configureEnqueue, enqueue, enqueueFlow } from './enqueue';
+export { enqueue, enqueueFlow } from './enqueue';
 export {
   isNonRetryable,
   JobCanceledError,
@@ -48,30 +67,22 @@ export {
 } from './errors';
 export { consoleLogger } from './logger';
 export type { NamespaceOptions, ResolvedNamespace } from './namespace';
-export {
-  bullPrefix,
-  DEFAULT_BULL_PREFIX,
-  DEFAULT_NAMESPACE,
-  redisKey,
-  resolveNamespace,
-} from './namespace';
+export { DEFAULT_NAMESPACE, resolveNamespace } from './namespace';
 export {
   captureTraceCarrier,
   startRunSpan,
   traceCarrierKey,
 } from './otel-hooks';
-export { createQueue, defaultJobOptions, queue } from './queue';
+export { InvalidScheduleError, UnknownTaskError } from './request-errors';
+export { isTerminalRunStatus } from './runs';
 export type {
   CreateQueueWorkerOptions,
-  QueueClient,
-  QueueClientOptions,
   QueueWorkerRuntime,
 } from './runtime';
-export { createQueueClient, createQueueWorker } from './runtime';
+export { createQueueWorker } from './runtime';
 export type { QueueScheduleController } from './schedules';
 export {
   assertCron,
-  createQueueSchedules,
   nextScheduledTimestamp,
   nextScheduledTimestamps,
   scheduleQueueName,
@@ -104,6 +115,7 @@ export type {
   AlertStore,
   AlertTrigger,
   BackoffOptions,
+  CancelRunResult,
   CreateQueueScheduleOptions,
   EnqueueMeta,
   EnqueueOptions,
@@ -114,7 +126,6 @@ export type {
   QueueCatalogEntry,
   QueueCatalogStore,
   QueueDefinition,
-  QueueDefinitionInput,
   QueueDrain,
   QueueDrainEvent,
   QueueRun,
@@ -132,6 +143,7 @@ export type {
   QueueSpanStore,
   QueueState,
   QueueStorage,
+  RunPrincipal,
   RunSpanKind,
   RunStatus,
   ScheduledTaskPayload,
@@ -145,5 +157,28 @@ export type {
   TaskSchedulesApi,
   UpdateQueueScheduleOptions,
 } from './types';
-export type { CreateWorkerOptions, QueueConcurrency } from './worker';
-export { createWorker } from './worker';
+export type { QueueConcurrency } from './worker';
+export type {
+  ActiveTransportJob,
+  ConsumeOptions,
+  OpenQueueWorld,
+  QueueTransport,
+  TransportCapabilities,
+  TransportCapability,
+  TransportConsumer,
+  TransportFlowNode,
+  TransportJobHandle,
+  TransportJobSpec,
+  TransportRetention,
+  WorldContext,
+  WorldFactory,
+  WorldMigrationStatus,
+  WorldMigrationStep,
+  WorldMigrations,
+} from './world';
+export {
+  UnsupportedCapabilityError,
+  validateWorld,
+  WORLD_SPEC_VERSION,
+} from './world';
+export { worldLocal } from './world-local';

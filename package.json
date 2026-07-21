@@ -20,17 +20,28 @@
   "workspaces": [
     "packages/*",
     "site",
-    "examples/*"
+    "examples/*",
+    "e2e"
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev --concurrency=16",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "check:control": "bun scripts/check-control-clean.ts",
+    "check:core": "bun scripts/check-core-clean.ts",
+    "check:world": "bun scripts/check-world-clean.ts",
+    "check:world-postgres": "bun scripts/check-world-postgres-clean.ts",
+    "e2e": "docker compose up --wait && turbo run test:transport e2e",
+    "e2e:pg": "docker compose up postgres --wait && E2E_WORLD=postgres REDIS_URL=redis://127.0.0.1:9 turbo run test:transport e2e --filter=@openqueue/world-postgres --filter=@openqueue/e2e --concurrency=1",
+    "e2e:split": "docker compose up postgres --wait && E2E_WORLD=postgres REDIS_URL=redis://127.0.0.1:9 turbo run e2e:split --filter=@openqueue/e2e --concurrency=1",
+    "e2e:artifact": "docker compose up --wait && bun e2e/scripts/artifact-smoke.ts",
+    "e2e:soak": "bun e2e/scripts/memory-soak.ts",
     "lint": "biome check .",
     "format": "biome format --write .",
     "clean": "turbo run clean && rm -rf node_modules",
-    "release": "turbo run build --filter='./packages/*' && bun run scripts/publish.ts"
+    "release:check": "bun run lint && bun run typecheck && bun run test && bun run build && bun run scripts/check-packages.ts",
+    "release": "bun run release:check && bun run scripts/publish.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.12",

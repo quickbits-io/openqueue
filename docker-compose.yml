@@ -1,0 +1,29 @@
+# Local stack for e2e + examples. Start: docker compose up --wait
+# Reset all data: docker compose down -v
+# Occupied default ports? OPENQUEUE_REDIS_PORT=6380 OPENQUEUE_PG_PORT=5434 docker compose up --wait
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ['${OPENQUEUE_REDIS_PORT:-6379}:6379']
+    volumes: ['redis-data:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  postgres:
+    image: postgres:16-alpine
+    ports: ['${OPENQUEUE_PG_PORT:-5432}:5432']
+    environment:
+      POSTGRES_USER: openqueue
+      POSTGRES_PASSWORD: openqueue
+      POSTGRES_DB: openqueue
+    volumes: ['postgres-data:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U openqueue -d openqueue']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  redis-data:
+  postgres-data:

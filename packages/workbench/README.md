@@ -18,7 +18,7 @@ bun add @openqueue/workbench
 | Entry | Use |
 | --- | --- |
 | `@openqueue/workbench` | Core (`WorkbenchCore`, `QueueManager`, `createFetchHandler`, route helpers). |
-| `@openqueue/workbench/hono` | `buildWorkbenchApp` / `createWorkbenchApp` — a ready-to-mount Hono app. |
+| `@openqueue/workbench/h3` | `buildWorkbenchApp` / `createWorkbenchApp` — a ready-to-mount h3 app. |
 | `@openqueue/workbench/next` | `workbench()` — Next.js App Router catch-all route handlers. |
 
 ```ts
@@ -31,7 +31,7 @@ export const { GET, POST, PUT, PATCH, DELETE } = workbench({
 });
 ```
 
-Runs on Node 18+ or Bun. React is bundled into the prebuilt UI — consumers of
+Runs on Node 20.11+ or Bun. React is bundled into the prebuilt UI — consumers of
 the adapters don't need to install it.
 
 ## Documentation

@@ -8,14 +8,26 @@
     {
       "type": "linked-versions",
       "groupName": "openqueue",
-      "components": ["cli", "core", "sdk", "workbench", "worker"]
+      "components": [
+        "cli",
+        "client",
+        "core",
+        "sdk",
+        "workbench",
+        "worker",
+        "world-bullmq",
+        "world-postgres"
+      ]
     }
   ],
   "packages": {
     "packages/cli": { "component": "cli" },
+    "packages/client": { "component": "client" },
     "packages/core": { "component": "core" },
     "packages/openqueue": { "component": "sdk" },
     "packages/workbench": { "component": "workbench" },
-    "packages/worker": { "component": "worker" }
+    "packages/worker": { "component": "worker" },
+    "packages/world-bullmq": { "component": "world-bullmq" },
+    "packages/world-postgres": { "component": "world-postgres" }
   }
 }

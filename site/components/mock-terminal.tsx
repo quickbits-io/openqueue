@@ -20,7 +20,7 @@ export function MockTerminal() {
             [openqueue] 3 tasks · 2 queues · 1 schedule{'\n'}
             [openqueue] workbench on{' '}
           </span>
-          <span className="text-sky-400">http://localhost:8787/workbench</span>
+          <span className="text-sky-400">http://localhost:8090/workbench</span>
           {'\n'}
           <span className="text-neutral-500">
             [openqueue] watching ./worker for changes{'\n\n'}

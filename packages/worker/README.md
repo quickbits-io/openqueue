@@ -5,8 +5,9 @@ loads your `worker.config.ts`, discovers and runs tasks, registers schedules, an
 serves the [Workbench](https://www.npmjs.com/package/@openqueue/workbench)
 dashboard.
 
-> **Bun-native.** This package uses `Bun.serve` and is intended to run on
-> [Bun](https://bun.sh).
+> **Runs on Node 20.11+ or Bun.** The worker hosts its h3 app on
+> [srvx](https://srvx.h3.dev); `@openqueue/cli` compiles it into a Nitro
+> production artifact via `openqueue build`.
 
 Most users drive the worker through
 [`@openqueue/cli`](https://www.npmjs.com/package/@openqueue/cli)

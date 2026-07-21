@@ -1,28 +1,15 @@
-import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import {
-  consoleDrain,
-  createQueueWorker,
-  defineQueueTasks,
-  loadQueueTasks,
-  type OpenQueueConfig,
-  type QueueCatalogEntry,
-  type QueueConfigTaskModule,
-  type QueueTaskDiscovery,
-  type QueueWorkerRuntime,
-  type TaskDefinition,
-  validateTaskDefinitions,
+import type {
+  OpenQueueConfig,
+  QueueTaskDiscovery,
+  QueueWorkerRuntime,
+  TaskDefinition,
 } from '@openqueue/core';
-import {
-  WorkbenchCore,
-  type WorkbenchJobDefinition,
-} from '@openqueue/workbench';
-import { buildWorkbenchApp } from '@openqueue/workbench/hono';
-import { createHealthServer } from './health';
-import { createQueueMetrics } from './metrics';
+import { serve } from 'h3';
+import { configDirs, createWorkerApp } from './app';
 
-const configDirs = new WeakMap<OpenQueueConfig, string>();
+export { createWorkbenchForRuntime } from './app';
 
 export interface StartWorkerAppOptions {
   cwd?: string;
@@ -33,6 +20,8 @@ export interface StartWorkerAppOptions {
 
 interface WorkerApp {
   runtime: QueueWorkerRuntime;
+  /** TCP port the app is listening on (useful with `port: 0`). */
+  port: number;
   close(): Promise<void>;
 }
 
@@ -40,67 +29,44 @@ export async function startWorkerApp(
   config: OpenQueueConfig,
   options: StartWorkerAppOptions = {},
 ): Promise<WorkerApp> {
-  validateConfig(config);
-  const cwd = options.cwd ?? configDirs.get(config) ?? process.cwd();
-  const tasks = options.tasks ?? (await resolveTasks(config, cwd));
-  const drains = [consoleDrain(), ...(config.drains ?? [])];
-  const runtime = await createQueueWorker({
-    namespace: config.namespace,
-    bullPrefix: config.redis.bullPrefix,
-    redis: { url: config.redis.url },
-    tasks,
-    storage: config.storage?.adapter,
-    drains,
-    globalConcurrency: config.concurrency?.global,
-    queueConcurrency: config.concurrency?.queues,
-  });
-  const queueNames = Array.from(runtime.queues.keys()).sort();
-  const state = { ready: true };
-  const health = createHealthServer(state, {
-    metrics:
-      config.metrics?.enabled === false
-        ? undefined
-        : createQueueMetrics(
-            Array.from(runtime.queues.values()),
-            config.metrics?.prefix,
-          ),
-  });
-
-  if (config.workbench?.enabled) {
-    const basePath = config.workbench.basePath ?? '/workbench';
-    health.route(
-      basePath,
-      buildWorkbenchApp(createWorkbenchForRuntime(runtime, config)),
-    );
-  }
-
+  const handle = await createWorkerApp(config, options);
   const port = options.port ?? Number(process.env.PORT ?? 8090);
-  const server = Bun.serve({
+  // srvx defaults `gracefulShutdown` on, which would install its own SIGTERM
+  // handling and double-drive shutdown; we own signals below, so keep it off.
+  const server = serve(handle.app, {
     port,
-    fetch: health.fetch,
-    idleTimeout: 30,
+    silent: true,
+    gracefulShutdown: false,
+    bun: { idleTimeout: 30 },
   });
-
-  console.log(
-    `[openqueue] started ${runtime.workers.length} workers across ${queueNames.length} queues with global concurrency ${config.concurrency?.global ?? 'unbounded'}`,
+  await server.ready();
+  const bound = Number(
+    new URL(server.url ?? `http://localhost:${port}`).port || port,
   );
-  console.log(`[openqueue] published ${runtime.catalog.length} tasks`);
-  console.log(`[openqueue] health server listening on :${port}`);
+
+  console.log(`[openqueue] health server listening on :${bound}`);
 
   let closed = false;
   const drain = async () => {
     console.log('[openqueue] shutdown received, draining');
-    await close();
+    try {
+      await close();
+    } catch (err) {
+      console.error('[openqueue] shutdown failed', err);
+      process.exit(1);
+    }
     process.exit(0);
   };
   const close = async () => {
     if (closed) return;
     closed = true;
-    state.ready = false;
     process.off('SIGTERM', drain);
     process.off('SIGINT', drain);
-    await runtime.close().catch(() => undefined);
-    server.stop(true);
+    try {
+      await handle.close();
+    } finally {
+      await server.close(true);
+    }
   };
 
   if (options.signals !== false) {
@@ -108,54 +74,7 @@ export async function startWorkerApp(
     process.once('SIGINT', drain);
   }
 
-  return { runtime, close };
-}
-
-function validateConfig(config: OpenQueueConfig): void {
-  if (!config.namespace?.trim()) {
-    throw new Error('OpenQueue config requires namespace');
-  }
-  if (!config.redis?.url) {
-    throw new Error('OpenQueue config requires redis.url');
-  }
-  const hasDirs = Array.isArray(config.dirs) && config.dirs.length > 0;
-  const hasTasks = Boolean(config.tasks);
-  if (!hasDirs && !hasTasks) {
-    throw new Error('OpenQueue config requires dirs or tasks');
-  }
-}
-
-export function createWorkbenchForRuntime(
-  runtime: QueueWorkerRuntime,
-  config: OpenQueueConfig,
-): WorkbenchCore {
-  const workbench = config.workbench ?? {};
-  return new WorkbenchCore({
-    queues: Array.from(runtime.queues.values()),
-    title: workbench.title ?? 'OpenQueue',
-    prefix: config.redis.bullPrefix ?? 'bull',
-    readonly: workbench.readonly ?? false,
-    auth: workbench.auth,
-    tagFields: workbench.tagFields ?? [],
-    basePath: workbench.basePath,
-    queue: {
-      schedules: runtime.schedules,
-      spans: runtime.spans,
-    },
-    alerts: {
-      persistence: config.storage?.adapter ? 'postgres' : 'redis',
-      store: runtime.alerts,
-      delivery: true,
-    },
-    registry: {
-      jobs: runtime.catalog.map(catalogJob),
-      flows: [],
-      enqueueJob: (job, input, opts) => runtime.trigger(job.name, input, opts),
-      enqueueFlow: async () => {
-        throw new Error('Flow catalog entries are not published yet');
-      },
-    },
-  });
+  return { runtime: handle.runtime, port: bound, close };
 }
 
 export async function loadConfig(path = 'worker.config.ts') {
@@ -167,108 +86,4 @@ export async function loadConfig(path = 'worker.config.ts') {
   }
   configDirs.set(mod.default, dirname(absolutePath));
   return mod.default;
-}
-
-async function resolveTasks(
-  config: OpenQueueConfig,
-  cwd: string,
-): Promise<TaskDefinition[]> {
-  const manifest = resolve(
-    cwd,
-    config.build?.outDir ?? '.openqueue/build',
-    'manifest.mjs',
-  );
-  if (existsSync(manifest)) {
-    const mod = (await import(pathToFileURL(manifest).href)) as {
-      tasks?: TaskDefinition[];
-      default?: TaskDefinition[];
-    };
-    return validateTaskDefinitions(mod.tasks ?? mod.default ?? []);
-  }
-
-  if (config.tasks) {
-    const loaded = await Promise.all(
-      taskModules(config.tasks).map((source) => loadTaskModule(source, cwd)),
-    );
-    return validateTaskDefinitions(loaded.flat());
-  }
-
-  const loaded: TaskDefinition[] = [];
-  for (const dir of config.dirs ?? []) {
-    loaded.push(
-      ...(await loadQueueTasks(
-        defineQueueTasks({
-          cwd: resolve(cwd, dir),
-          include: [
-            '**/*.ts',
-            '**/*.tsx',
-            '**/*.mts',
-            '**/*.cts',
-            '**/*.js',
-            '**/*.jsx',
-            '**/*.mjs',
-            '**/*.cjs',
-          ],
-          exclude: config.exclude,
-        }),
-      )),
-    );
-  }
-  return validateTaskDefinitions(loaded);
-}
-
-async function loadTaskModule(
-  source: QueueConfigTaskModule,
-  cwd: string,
-): Promise<TaskDefinition[]> {
-  const mod = (await import(
-    pathToFileURL(resolve(cwd, source.module)).href
-  )) as Record<string, unknown>;
-  const value = exportedValue(mod, source);
-  return loadQueueTasks(value as QueueTaskDiscovery | TaskDefinition[]);
-}
-
-function taskModules(
-  source: QueueConfigTaskModule | QueueConfigTaskModule[],
-): QueueConfigTaskModule[] {
-  return Array.isArray(source) ? source : [source];
-}
-
-function exportedValue(
-  mod: Record<string, unknown>,
-  source: QueueConfigTaskModule,
-): unknown {
-  if (source.export) {
-    const value = mod[source.export];
-    if (!value) {
-      throw new Error(
-        `OpenQueue task module "${source.module}" does not export "${source.export}"`,
-      );
-    }
-    return value;
-  }
-
-  const value = mod.default ?? mod.tasks;
-  if (!value) {
-    throw new Error(
-      `OpenQueue task module "${source.module}" must export default or tasks`,
-    );
-  }
-  return value;
-}
-
-function catalogJob(entry: QueueCatalogEntry): WorkbenchJobDefinition {
-  return {
-    name: entry.name,
-    queue: entry.queue,
-    description: entry.description,
-    handler: null,
-    concurrency: entry.concurrency,
-    attempts: entry.attempts,
-    backoff: entry.backoff,
-    cron: entry.cron,
-    ttl: entry.ttl,
-    maxStalledCount: entry.maxStalledCount,
-    tags: entry.tags,
-  };
 }

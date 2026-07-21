@@ -12,6 +12,9 @@ out/
 # turbo
 .turbo/
 
+# memory-soak harness output (manual profiling tool)
+.soak-artifacts/
+
 # next.js / site
 .next/
 .source/
@@ -44,3 +47,8 @@ yarn-error.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# local research clones + tool indexes
+.context/
+.codegraph/
+.cursor/

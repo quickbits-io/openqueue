@@ -1,4 +1,5 @@
 import type {
+  AuthStrategy,
   QueueRunSpan,
   QueueSchedule,
   QueueScheduleListOptions,
@@ -25,6 +26,8 @@ export interface WorkbenchSchema<I = unknown> {
 }
 
 export interface WorkbenchJobDefinition<I = unknown, O = unknown> {
+  /** Canonical catalog task id — what string triggers resolve against. */
+  id: string;
   name: string;
   queue: string;
   schema?: WorkbenchSchema<I>;
@@ -34,7 +37,6 @@ export interface WorkbenchJobDefinition<I = unknown, O = unknown> {
   attempts: number;
   backoff: unknown;
   cron?: string;
-  ttl?: number;
   maxStalledCount?: number;
   tags: string[];
   __input?: I;
@@ -59,10 +61,8 @@ export interface TestEnqueueOptions {
 }
 
 export interface WorkbenchEnqueueResult {
-  id: string;
-  runId?: string;
-  jobId?: string;
-  transportJobId?: string;
+  runId: string;
+  jobId: string;
 }
 
 export interface WorkbenchRegistry {
@@ -141,11 +141,9 @@ export interface WorkbenchOptions {
   queues?: Queue[];
   /** Redis connection for auto-discovery of queues */
   redis?: string | RedisOptions;
-  /** Basic auth credentials */
-  auth?: {
-    username: string;
-    password: string;
-  };
+  /** Basic auth credentials (sugar for `[httpBasic(...)]`) or an ordered
+   *  {@link AuthStrategy} walk. Unset = dashboard open (existing behavior). */
+  auth?: { username: string; password: string } | AuthStrategy[];
   /** Dashboard title */
   title?: string;
   /** Logo URL */
@@ -271,7 +269,7 @@ export interface AlertsOptions {
   /** Override the config store entirely */
   store?: AlertStore;
   /** Where to persist dashboard-managed config. Default: `"redis"` when a connection exists */
-  persistence?: 'redis' | 'memory' | 'postgres';
+  persistence?: AlertPersistence;
   /** Redis key prefix for stored config. Default: Workbench `prefix` or `"bull"` */
   storagePrefix?: string;
   defaults?: {

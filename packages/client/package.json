@@ -1,0 +1,71 @@
+{
+  "name": "@openqueue/client",
+  "version": "1.0.0",
+  "description": "Fetch-only HTTP client for a deployed OpenQueue worker — trigger tasks, read runs, manage schedules with zero Redis/DB connections.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/client#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quickbits-io/openqueue.git",
+    "directory": "packages/client"
+  },
+  "bugs": {
+    "url": "https://github.com/quickbits-io/openqueue/issues"
+  },
+  "keywords": [
+    "openqueue",
+    "queue",
+    "jobs",
+    "background-jobs",
+    "client",
+    "http",
+    "edge",
+    "bun",
+    "typescript"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./wire": {
+      "types": "./dist/wire.d.ts",
+      "import": "./dist/wire.js",
+      "default": "./dist/wire.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.11.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf .turbo node_modules dist",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@openqueue/core": "workspace:*",
+    "@types/node": "^22.10.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

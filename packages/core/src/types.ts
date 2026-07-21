@@ -101,7 +101,6 @@ export interface TaskDefinitionInput<I = unknown, O = unknown> {
   attempts?: number;
   backoff?: BackoffOptions | number;
   cron?: string;
-  ttl?: number;
   maxStalledCount?: number;
   tags?: string[];
 }
@@ -117,7 +116,6 @@ export interface TaskDefinition<I = unknown, O = unknown> {
   attempts: number;
   backoff: BackoffOptions;
   cron?: string;
-  ttl?: number;
   maxStalledCount?: number;
   tags: string[];
   __input?: I;
@@ -129,9 +127,18 @@ export interface QueueDefinition {
   concurrency?: number;
 }
 
-export interface QueueDefinitionInput {
-  name: string;
-  concurrency?: number;
+/**
+ * Identity slice stamped onto runs and schedules created through the control
+ * API (`meta.enqueuedBy`). It is a reserved meta key — the control API strips
+ * any inbound value and re-stamps the verified caller.
+ */
+export interface RunPrincipal {
+  /** e.g. 'api-key' | 'http-basic' | 'jwt-hmac' | 'oidc' | 'local-dev' | 'none' | custom. */
+  authenticator: string;
+  principalId: string;
+  /** Well-known: 'service' | 'user' | 'local-dev' | 'anonymous'. Plain string for forward compat. */
+  principalType: string;
+  tenantId?: string;
 }
 
 export interface EnqueueMeta {
@@ -139,6 +146,7 @@ export interface EnqueueMeta {
   parentRunId?: string;
   scheduleId?: string;
   scheduleExternalId?: string;
+  enqueuedBy?: RunPrincipal;
   [key: string]: unknown;
 }
 
@@ -149,7 +157,6 @@ export interface EnqueueOptions {
   priority?: number;
   attempts?: number;
   backoff?: BackoffOptions | number;
-  ttl?: number;
   failParentOnFailure?: boolean;
   continueParentOnFailure?: boolean;
   ignoreDependencyOnFailure?: boolean;
@@ -157,10 +164,8 @@ export interface EnqueueOptions {
 }
 
 export interface EnqueueResult {
-  id: string;
   runId: string;
   jobId: string;
-  transportJobId: string;
 }
 
 export interface ScheduledTaskPayload {
@@ -214,7 +219,8 @@ export interface QueueScheduleListOptions {
   task?: string;
   externalId?: string;
   active?: boolean;
-  meta?: Partial<EnqueueMeta>;
+  /** Deep-containment filter over `meta` (Postgres `@>` semantics on both stores). */
+  meta?: Record<string, unknown>;
   sort?: {
     field: 'nextRun' | 'lastRun' | 'createdAt' | 'updatedAt';
     direction: 'asc' | 'desc';
@@ -291,7 +297,6 @@ export interface FlowTaskDefinition {
   schema?: { parse(input: unknown): unknown };
   attempts: number;
   backoff: BackoffOptions;
-  ttl?: number;
   maxStalledCount?: number;
   tags: string[];
 }
@@ -324,7 +329,6 @@ export interface QueueCatalogEntry {
   attempts: number;
   backoff: BackoffOptions;
   concurrency: number;
-  ttl?: number;
   maxStalledCount?: number;
   cron?: string;
   tags: string[];
@@ -364,7 +368,8 @@ export interface QueueRun {
 
 export interface QueueRunListOptions {
   id?: string;
-  meta?: Partial<EnqueueMeta>;
+  /** Deep-containment filter over `meta` (Postgres `@>` semantics on both stores). */
+  meta?: Record<string, unknown>;
   scheduleId?: string;
   scheduleExternalId?: string;
   task?: string;
@@ -396,9 +401,16 @@ export interface QueueRunPollOptions {
   maxAttempts?: number;
 }
 
+export type CancelRunResult =
+  | { outcome: 'canceled'; run: QueueRun }
+  | { outcome: 'not_found' }
+  | { outcome: 'already_finished'; run: QueueRun }
+  | { outcome: 'not_cancelable'; run: QueueRun; reason: 'executing' };
+
 export interface QueueRunsApi extends QueueRunStore {
   retrieve(id: string): Promise<QueueRun | undefined>;
   poll(id: string, options?: QueueRunPollOptions): Promise<QueueRun>;
+  cancel(id: string): Promise<CancelRunResult>;
 }
 
 export type RunSpanKind = 'span' | 'log';
@@ -440,7 +452,8 @@ export type QueueDrainEvent =
   | { type: 'start'; run: QueueRunSnapshot }
   | { type: 'progress'; run: QueueRunSnapshot; patch: Record<string, unknown> }
   | { type: 'complete'; run: QueueRunSnapshot }
-  | { type: 'fail'; run: QueueRunSnapshot };
+  | { type: 'fail'; run: QueueRunSnapshot }
+  | { type: 'cancel'; run: QueueRunSnapshot };
 
 export interface QueueDrain {
   name?: string;

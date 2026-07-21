@@ -1,7 +1,7 @@
 {
   "name": "@openqueue/worker",
-  "version": "0.1.4",
-  "description": "OpenQueue worker runtime — runs your tasks, schedules, and flows, and serves the workbench. Bun-native.",
+  "version": "1.0.0",
+  "description": "OpenQueue worker runtime — runs your tasks, schedules, and flows, and serves the workbench.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/worker#readme",
@@ -30,12 +30,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./nitro": {
+      "types": "./dist/nitro.d.ts",
+      "import": "./dist/nitro.js",
+      "default": "./dist/nitro.js"
     }
   },
   "files": [
     "dist"
   ],
   "engines": {
+    "node": ">=20.11.1",
     "bun": ">=1.2.0"
   },
   "publishConfig": {
@@ -53,7 +59,8 @@
   "dependencies": {
     "@openqueue/core": "workspace:*",
     "@openqueue/workbench": "workspace:*",
-    "hono": "^4.11.9"
+    "@openqueue/world-bullmq": "workspace:*",
+    "h3": "2.0.1-rc.25"
   },
   "devDependencies": {
     "@types/bun": "^1.2.18",

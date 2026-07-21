@@ -22,7 +22,7 @@ bun add @openqueue/core
 
 OpenTelemetry support is optional via the `@opentelemetry/*` peer dependencies.
 
-Runs on Node 18+ or Bun.
+Runs on Node 20.11+ or Bun.
 
 ## Documentation
 

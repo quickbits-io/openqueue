@@ -58,9 +58,11 @@ export class WorkbenchCore {
     };
 
     const explicit = this.options.queues ?? [];
-    const allowEmpty = !!this.options.redis;
 
-    if (explicit.length === 0 && !allowEmpty) {
+    // An explicit empty `queues: []` is intentional (a non-BullMQ world with no
+    // queues to display); only a wholly absent `queues` with no `redis` to
+    // auto-discover from is a misconfiguration.
+    if (this.options.queues === undefined && !this.options.redis) {
       throw new Error(
         'Workbench requires at least one queue. Pass queues directly or provide a redis connection for auto-discovery.',
       );
@@ -87,6 +89,9 @@ export class WorkbenchCore {
         alertsOpts,
         store,
         persistence,
+        // We own (and must close) a store createAlertStore built for us; an
+        // injected `alerts.store` is world-owned and closed by the runtime.
+        alertsOpts.store === undefined,
       );
       if (alertsOpts.delivery !== false) {
         void this.alertManager.start().catch((err) => {
@@ -100,11 +105,21 @@ export class WorkbenchCore {
   }
 
   /**
+   * Release the resources this core started: the alert manager's health-check
+   * interval and its QueueEvents listeners. Idempotent, and a no-op when alerts
+   * were never enabled. The caller owns the queues themselves.
+   */
+  async close(): Promise<void> {
+    await this.alertManager?.close();
+  }
+
+  /**
    * Async factory: build a `WorkbenchCore` from `WorkbenchOptions`, performing
    * BullMQ queue auto-discovery via `SCAN <prefix>:*:meta` when `queues` is
    * not provided.
    *
-   * - When `queues` is set explicitly, behaves like `new WorkbenchCore(opts)`.
+   * - When `queues` is set explicitly — including an explicit empty `[]` for a
+   *   non-BullMQ/degraded dashboard — behaves like `new WorkbenchCore(opts)`.
    * - When only `redis` is set, scans the connection for queues, caps at
    *   `maxQueues` (default 100) to avoid connection storms with very large
    *   deployments, and constructs the core with the resulting list.
@@ -113,7 +128,7 @@ export class WorkbenchCore {
    *   erroring out.
    */
   static async fromOptions(opts: WorkbenchOptions): Promise<WorkbenchCore> {
-    if (opts.queues?.length) {
+    if (opts.queues !== undefined) {
       return new WorkbenchCore(opts);
     }
     if (!opts.redis) {
@@ -141,21 +156,27 @@ export class WorkbenchCore {
   }
 
   /**
-   * Check if authentication is required
+   * Check if authentication is required. The credentials form requires both a
+   * username and password; the strategy-array form always requires auth
+   * (fail-closed, including the empty array).
    */
   requiresAuth(): boolean {
-    return !!(this.options.auth?.username && this.options.auth?.password);
+    const auth = this.options.auth;
+    if (auth === undefined) return false;
+    if (Array.isArray(auth)) return true;
+    return !!(auth.username && auth.password);
   }
 
   /**
-   * Validate authentication credentials
+   * Validate a username/password against the credentials form. The
+   * strategy-array form is not username/password based and always fails here —
+   * those requests authenticate through the auth walk instead.
    */
   validateAuth(username: string, password: string): boolean {
-    if (!this.requiresAuth()) return true;
-    return (
-      username === this.options.auth?.username &&
-      password === this.options.auth?.password
-    );
+    const auth = this.options.auth;
+    if (auth === undefined) return true;
+    if (Array.isArray(auth)) return false;
+    return username === auth.username && password === auth.password;
   }
 
   /**

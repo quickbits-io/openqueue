@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { H3 } from 'h3';
 
 interface State {
   ready: boolean;
@@ -9,14 +9,20 @@ interface HealthOptions {
 }
 
 export function createHealthServer(state: State, options: HealthOptions = {}) {
-  const app = new Hono();
+  const app = new H3();
 
-  app.get('/health', (c) => c.json({ ok: true }));
-  app.get('/ready', (c) =>
-    state.ready ? c.json({ ok: true }) : c.json({ ok: false }, 503),
+  app.get('/health', () => Response.json({ ok: true }));
+  app.get('/ready', () =>
+    Response.json({ ok: state.ready }, { status: state.ready ? 200 : 503 }),
   );
   if (options.metrics) {
-    app.get('/metrics', async (c) => c.text(await options.metrics!()));
+    app.get(
+      '/metrics',
+      async () =>
+        new Response(await options.metrics!(), {
+          headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
+        }),
+    );
   }
 
   return app;

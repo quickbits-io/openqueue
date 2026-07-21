@@ -63,7 +63,6 @@ bun run typecheck  # tsc --noEmit across packages
 bun run test       # vitest
 bun run lint       # biome check
 bun run format     # biome format --write
-bun run changeset  # describe a change for release (see Releases below)
 ```
 
 Per-package work: `cd packages/<pkg> && bun run build|test|typecheck`.
@@ -72,11 +71,14 @@ Per-package work: `cd packages/<pkg> && bun run build|test|typecheck`.
 
 | Package | Name | Runtime | Notes |
 | --- | --- | --- | --- |
-| `packages/core` | `@openqueue/core` | Node 18+ / Bun | Engine: tasks, queues, schedules, flows, persistence (Drizzle), OTel hooks. |
-| `packages/openqueue` | `@openqueue/sdk` | Node 18+ / Bun | Flagship package; re-exports core. The import users write. |
-| `packages/worker` | `@openqueue/worker` | **Bun only** | Worker app; uses `Bun.serve`, loads config, serves Workbench. |
-| `packages/cli` | `@openqueue/cli` | **Bun only** | `openqueue` binary; uses `Bun.build`/`Bun.spawn`/`Bun.Glob`. |
-| `packages/workbench` | `@openqueue/workbench` | Node 18+ / Bun | Dashboard (React, built by Vite) + Hono/Next adapters (built by tsup). |
+| `packages/core` | `@openqueue/core` | Node 20.11+ / Bun | Engine: tasks, queues, schedules, flows, Drizzle persistence, OTel hooks — transport-agnostic (no ioredis/bullmq; delivery comes from a world). |
+| `packages/openqueue` | `@openqueue/sdk` | Node 20.11+ / Bun | Flagship package; re-exports core. The import users write. |
+| `packages/client` | `@openqueue/client` | Node 20.11+ / Bun / edge | Fetch-only HTTP client for a deployed worker; zero Redis/DB deps (only `zod`). |
+| `packages/world-bullmq` | `@openqueue/world-bullmq` | Node 20.11+ / Bun | BullMQ world (default delivery): Redis transport + write-through store. Owns ioredis/bullmq; the worker resolves `redis:` config sugar to it. |
+| `packages/world-postgres` | `@openqueue/world-postgres` | Node 20.11+ / Bun | Self-migrating Postgres world: `SELECT … FOR UPDATE SKIP LOCKED` transport + Drizzle store, zero Redis. |
+| `packages/worker` | `@openqueue/worker` | Node 20.11+ / Bun | h3 app + srvx host; loads config, serves Workbench. Production artifact built by the CLI via Nitro (Node ^20.19 ‖ ≥22.12 or Bun). |
+| `packages/cli` | `@openqueue/cli` | **Bun only** | `openqueue` binary; `build` compiles the worker into a Nitro artifact; uses `Bun.spawn`/`Bun.Glob`. |
+| `packages/workbench` | `@openqueue/workbench` | Node 20.11+ / Bun | Dashboard (React, built by Vite) + h3/Next adapters (built by tsup). |
 | `site` | — | — | Docs/marketing (Next.js + Fumadocs). Private. |
 | `examples/basic` | — | Bun | A runnable example worker. Private. |
 
@@ -86,7 +88,9 @@ Libraries build with `tsup` to ESM + `.d.ts` in `dist/`. The workbench also
 builds its React SPA with Vite into `dist/ui` (served from disk via
 `UI_DIST_PATH`). Package `exports`/`files` point at `dist`, so what you import in
 dev is what npm ships. `workspace:*` inter-deps are rewritten to exact versions
-at publish time.
+at publish time. `openqueue build` additionally compiles the worker into a
+self-contained Nitro node-server bundle at `.output` — the CLI's production
+artifact, booted by `openqueue start`.
 
 ### Package imports
 
@@ -94,8 +98,8 @@ Use the published specifiers, not deep relative paths across packages:
 
 ```ts
 import { task, defineConfig } from '@openqueue/sdk';
-import { createWorker } from '@openqueue/core';
-import { buildWorkbenchApp } from '@openqueue/workbench/hono';
+import { createQueueWorker } from '@openqueue/core';
+import { buildWorkbenchApp } from '@openqueue/workbench/h3';
 ```
 
 ## Code Style
@@ -139,9 +143,12 @@ not as free-text. Reserve free-text for the debug/audit narrative.
 
 ## Releases
 
-Releases use Changesets. Add `bun run changeset` to any PR that should ship a
-release; merging to `main` opens a "Version Packages" PR, and merging that
-publishes to npm. All `@openqueue/*` packages version in lockstep.
+Releases use release-please driven by conventional commits (`feat:`, `fix:`,
+`feat!:` for breaking). Merging to `main` maintains a release PR; merging that
+PR publishes to npm via `scripts/publish.ts`. All `@openqueue/*` packages
+version in lockstep (`linked-versions`). Never squash-merge feature branches —
+release-please reads the per-commit type markers. See CONTRIBUTING.md for the
+full flow.
 
 ## Misc
 

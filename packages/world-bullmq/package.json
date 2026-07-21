@@ -1,0 +1,70 @@
+{
+  "name": "@openqueue/world-bullmq",
+  "version": "1.0.0",
+  "description": "The BullMQ world for OpenQueue — a Redis-backed delivery transport paired with a write-through durable state store. The default OpenQueue delivery path.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/world-bullmq#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quickbits-io/openqueue.git",
+    "directory": "packages/world-bullmq"
+  },
+  "bugs": {
+    "url": "https://github.com/quickbits-io/openqueue/issues"
+  },
+  "keywords": [
+    "openqueue",
+    "queue",
+    "jobs",
+    "background-jobs",
+    "bullmq",
+    "redis",
+    "ioredis",
+    "bun",
+    "typescript"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.11.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf .turbo node_modules dist",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:transport": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openqueue/core": "workspace:*",
+    "bullmq": "^5.71.1",
+    "ioredis": "^5.10.1"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@types/node": "^22.10.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18",
+    "zod": "^4.1.13"
+  }
+}

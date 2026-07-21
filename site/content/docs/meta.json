@@ -10,8 +10,11 @@
     "schedules",
     "errors",
     "persistence",
+    "worlds",
     "deployment",
+    "two-plane",
     "scaling",
-    "roadmap"
+    "roadmap",
+    "upgrading-to-1.0"
   ]
 }

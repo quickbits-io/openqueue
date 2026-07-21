@@ -9,29 +9,52 @@ description: Building, running, and observing the worker in production.
 bunx openqueue build
 ```
 
-`build` bundles every discovered task into a single manifest at
-`.openqueue/build/manifest.mjs` (configurable via `build.outDir`) and prints
-what it found:
+`build` compiles every discovered task, its config, and the worker into a
+self-contained Nitro **node-server bundle at `.output`** (configurable via
+`build.outDir`) and prints what it found:
 
 ```
-OpenQueue build wrote 14 tasks, 5 queues, 3 schedules, 412.7 KB to .openqueue/build/manifest.mjs
+OpenQueue build wrote 14 tasks, 5 queues, 3 schedules, 5.6 MB to .output
 ```
-
-Dependencies that must stay external to the bundle go in `build.external`.
 
 ```bash
 bunx openqueue start
 ```
 
-`start` loads `worker.config.ts`, prefers the built manifest when present,
-connects to Redis, and runs until it receives `SIGTERM`/`SIGINT` — shutting
-down gracefully so in-flight jobs finish or are returned to the queue.
+`start` prefers the built artifact — it spawns `.output/server/index.mjs`, polls
+`/health` until ready, and forwards `SIGTERM`/`SIGINT` so in-flight jobs drain
+before exit. When no artifact exists it falls back to booting the worker from
+source. It injects `PORT`/`NITRO_PORT`, preserving the worker's `8090` default.
+
+The artifact is a Node bundle, so `start` runs it under a **`node` binary from
+`PATH`** when one satisfies the floor (`^20.19 || >=22.12`), falling back to Bun
+(the CLI's own runtime) when no suitable Node is found. It logs which it chose:
+
+```
+[openqueue] artifact runtime: Node v22.12.0 (/usr/local/bin/node)
+```
+
+Node is preferred because Bun's node-compat carries a heavier resident-memory
+profile for the long-lived worker; install Node in the runtime image to pin it.
+
+### Running the artifact directly
+
+The `.output` bundle is a standard Nitro node-server; run it without the CLI on
+**Node `^20.19 || >=22.12` or Bun**:
+
+```bash
+PORT=8090 node .output/server/index.mjs
+```
+
+Without `PORT`, a direct boot defaults to Nitro's port **3000** — set `PORT`
+explicitly (or use `openqueue start`, which injects it).
 
 ## Docker
 
 The repository ships a worker Dockerfile under `docker/worker`. The image
-runs `openqueue start` against your config; the only required runtime input
-is `REDIS_URL`.
+runs `openqueue build` under Bun, then `openqueue start` — which runs the built
+artifact under Node when the image provides one, else Bun. The only required
+runtime input is `REDIS_URL`.
 
 ```dockerfile
 FROM oven/bun:1 AS base
@@ -39,6 +62,23 @@ WORKDIR /app
 COPY . .
 RUN bun install --frozen-lockfile && bunx openqueue build
 CMD ["bunx", "openqueue", "start"]
+```
+
+To run the artifact on Node in production, build it under Bun and copy `.output`
+into a slim Node image — no Bun or source at runtime:
+
+```dockerfile
+FROM oven/bun:1 AS build
+WORKDIR /app
+COPY . .
+RUN bun install --frozen-lockfile && bunx openqueue build
+
+FROM node:22-slim
+WORKDIR /app
+COPY --from=build /app/.output ./.output
+ENV PORT=8090
+EXPOSE 8090
+CMD ["node", ".output/server/index.mjs"]
 ```
 
 Scale horizontally by running more replicas — BullMQ coordinates workers

@@ -7,7 +7,7 @@ import {
   type JobType,
   type Queue,
 } from 'bullmq';
-import { parseExpression } from 'cron-parser';
+import cronParser from 'cron-parser';
 import { LRUCache } from 'lru-cache';
 import { isRecord } from '../util';
 import type {
@@ -125,7 +125,7 @@ function upcomingRuns(
   if (scheduler.pattern) {
     try {
       const tz = scheduler.tz ?? undefined;
-      const iterator = parseExpression(scheduler.pattern, {
+      const iterator = cronParser.parseExpression(scheduler.pattern, {
         currentDate: new Date(),
         tz: tz === 'UTC' ? undefined : tz,
         utc: tz === 'UTC' || tz === undefined,
@@ -231,12 +231,19 @@ export class QueueManager {
     this.tagFields = tagFields;
     this.registry = registry;
 
-    // Initialize FlowProducer using connection from first queue
+    // Initialize FlowProducer using the connection AND prefix from the first
+    // queue. The worker's transport namespaces its queues under
+    // `${prefix}:${namespace}`; without the same prefix the FlowProducer would
+    // default to `bull` and read/write a different Redis keyspace than the
+    // queues it's supposed to inspect.
     const firstQueue = queues[0];
     if (firstQueue) {
       const connection = firstQueue.opts?.connection;
       if (connection) {
-        this.flowProducer = new FlowProducer({ connection });
+        this.flowProducer = new FlowProducer({
+          connection,
+          prefix: firstQueue.opts?.prefix,
+        });
       }
     }
   }
@@ -2090,10 +2097,10 @@ export class QueueManager {
         request.data,
         request.opts,
       );
-      this.invalidateJobCache(job.queue, result.transportJobId ?? result.id);
+      this.invalidateJobCache(job.queue, result.jobId);
 
       return {
-        id: result.id,
+        id: result.runId,
         type: 'job',
         name: job.name,
         queueName: job.queue,
@@ -2114,10 +2121,10 @@ export class QueueManager {
       const result = await this.registry.enqueueFlow(
         withRootOpts(flow.build(input), request.opts),
       );
-      this.invalidateJobCache(flow.queue, result.transportJobId ?? result.id);
+      this.invalidateJobCache(flow.queue, result.jobId);
 
       return {
-        id: result.id,
+        id: result.runId,
         type: 'flow',
         name: flow.name,
         queueName: flow.queue,

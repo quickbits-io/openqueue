@@ -72,15 +72,21 @@ the browser.
 
 ## 3. Trigger from your app
 
+The worker serves a control API; `createClient({ host })` binds it as the
+process runtime so `trigger()` goes over HTTP — no Redis connection in your app.
+
 ```ts
+import { createClient } from '@openqueue/sdk/client';
 import { exampleTask } from './worker/example';
+
+createClient({ host: 'http://localhost:8288' });
 
 await exampleTask.trigger({ message: 'deploy finished' });
 ```
 
 `trigger` validates the payload against the schema, enqueues the job, and
-returns an `EnqueueResult` with the job id. Options let you delay or
-deduplicate:
+returns an `EnqueueResult` — `{ runId, jobId }`, where `runId` is the durable
+handle you inspect run status with. Options let you delay or deduplicate:
 
 ```ts
 await exampleTask.trigger(payload, { delay: 60_000 });
@@ -89,8 +95,8 @@ await exampleTask.trigger(payload, { delay: 60_000 });
 ## 4. Ship it
 
 ```bash
-bunx openqueue build   # bundles tasks into .openqueue/build/manifest.mjs
-bunx openqueue start   # runs the worker from the manifest
+bunx openqueue build   # compiles the worker into a Nitro artifact (.output)
+bunx openqueue start   # runs the built artifact (or from source if absent)
 ```
 
 See [Deployment](/docs/deployment) for Docker and production notes.

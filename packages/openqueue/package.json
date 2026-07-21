@@ -1,6 +1,6 @@
 {
   "name": "@openqueue/sdk",
-  "version": "0.1.4",
+  "version": "1.0.0",
   "description": "OpenQueue SDK — define and enqueue typed, durable background jobs. The main entrypoint for OpenQueue.",
   "license": "MIT",
   "type": "module",
@@ -18,8 +18,6 @@
     "queue",
     "jobs",
     "background-jobs",
-    "bullmq",
-    "redis",
     "task-queue",
     "bun",
     "typescript"
@@ -44,7 +42,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.11.1"
   },
   "publishConfig": {
     "access": "public"
@@ -55,14 +53,17 @@
     "clean": "rm -rf .turbo node_modules dist",
     "lint": "biome check .",
     "format": "biome format --write .",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@openqueue/client": "workspace:*",
     "@openqueue/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.10",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

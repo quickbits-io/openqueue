@@ -53,7 +53,6 @@ export function task<I, O>(input: TaskDefinitionInput<I, O>): Task<I, O> {
     attempts: input.attempts ?? DEFAULT_ATTEMPTS,
     backoff: normalizeBackoff(input.backoff),
     cron: input.cron,
-    ttl: input.ttl,
     maxStalledCount: input.maxStalledCount,
     tags: input.tags ?? [],
     trigger: (payload, opts) => trigger(def, payload, opts),

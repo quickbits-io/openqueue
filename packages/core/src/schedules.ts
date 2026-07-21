@@ -1,13 +1,13 @@
 import cronParser from 'cron-parser';
-import type { Redis } from 'ioredis';
 import { z } from 'zod';
 import {
   DEFAULT_NAMESPACE,
   type NamespaceOptions,
   resolveNamespace,
 } from './namespace';
-import { createQueue } from './queue';
+import { InvalidScheduleError } from './request-errors';
 import { deriveDefaultInput, task } from './task';
+import { assertCapability, type QueueTransport } from './transport/types';
 import type {
   EnqueueOptions,
   EnqueueResult,
@@ -35,8 +35,8 @@ function queueNamePart(value: string): string {
   return value.replace(/:/g, '-');
 }
 
-interface CreateQueueSchedulesOptions extends NamespaceOptions {
-  redis: Redis;
+interface CreateQueueSchedulesWithTransportOptions extends NamespaceOptions {
+  transport: QueueTransport;
   storage: QueueState;
   resolveTask(id: string): Promise<QueueCatalogEntry>;
   trigger<I>(
@@ -62,28 +62,26 @@ const tickSchema = z.object({
   scheduledAt: z.string(),
 });
 
-export function createQueueSchedules({
-  redis,
+export function createQueueSchedulesWithTransport({
+  transport,
   storage,
   resolveTask,
   trigger,
   ...namespaceOptions
-}: CreateQueueSchedulesOptions): QueueScheduleController {
+}: CreateQueueSchedulesWithTransportOptions): QueueScheduleController {
   const namespace = resolveNamespace(namespaceOptions);
-  const queue = createQueue(
-    scheduleQueueNameFor(namespace.namespace),
-    redis,
-    namespace,
-  );
+  const queueName = scheduleQueueNameFor(namespace.namespace);
 
   async function enqueueNext(schedule: QueueSchedule): Promise<void> {
     await removeScheduleJob(schedule.id);
     if (!schedule.active || !schedule.nextRun) return;
 
+    assertCapability(transport, 'delay');
     const scheduledAt = schedule.nextRun.toISOString();
-    await queue.add(
-      scheduleTickJobName,
-      {
+    await transport.enqueue(queueName, {
+      id: scheduleJobId(schedule.id, scheduledAt),
+      name: scheduleTickJobName,
+      data: {
         __input: {
           scheduleId: schedule.id,
           scheduledAt,
@@ -92,26 +90,25 @@ export function createQueueSchedules({
         __meta: { ...schedule.meta, tags: ['queue:schedule'] },
         __metadata: {},
       },
-      {
-        jobId: scheduleJobId(schedule.id, scheduledAt),
-        delay: Math.max(schedule.nextRun.getTime() - Date.now(), 0),
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 1000 },
+      delay: Math.max(schedule.nextRun.getTime() - Date.now(), 0),
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 1000 },
+      retention: {
         removeOnComplete: true,
         removeOnFail: { age: 30 * 24 * 3600, count: 1000 },
       },
-    );
+    });
   }
 
   async function removeScheduleJob(id: string): Promise<void> {
-    const legacy = await queue.getJob(legacyScheduleJobId(id));
+    const legacy = await transport.getJob(queueName, legacyScheduleJobId(id));
     await legacy?.remove().catch(() => undefined);
 
-    const delayed = await queue.getDelayed(0, -1);
+    const delayed = await transport.listDelayed(queueName);
     await Promise.all(
-      delayed.map((job) =>
-        job && scheduleTickMatches(job.name, job.data, id)
-          ? job.remove().catch(() => undefined)
+      delayed.map((handle) =>
+        handle && scheduleTickMatches(handle.name, handle.data, id)
+          ? handle.remove().catch(() => undefined)
           : undefined,
       ),
     );
@@ -125,9 +122,13 @@ export function createQueueSchedules({
 
   const api: QueueScheduleController = {
     create: async (options) => {
-      assertCron(options.cron);
-      const task = await normalizeTask(options.task);
+      // Schedules ride on delayed jobs: assert support before writing so a world
+      // without `delay` fails the request with no durable side effect (otherwise
+      // the store keeps a schedule that lists but can never tick).
+      assertCapability(transport, 'delay');
       const timezone = options.timezone ?? 'UTC';
+      assertCron(options.cron, timezone);
+      const task = await normalizeTask(options.task);
       const nextRunAt = nextScheduledTimestamp(options.cron, timezone);
       const schedule = await storage.schedules.create({
         id: `sched_${crypto.randomUUID()}`,
@@ -162,12 +163,13 @@ export function createQueueSchedules({
     },
 
     update: async (id, options) => {
+      assertCapability(transport, 'delay');
       const current = await storage.schedules.retrieve(id);
       if (!current) throw new Error(`Unknown queue schedule "${id}"`);
 
       const cron = options.cron ?? current.cron;
-      assertCron(cron);
       const timezone = options.timezone ?? current.timezone;
+      assertCron(cron, timezone);
       const task = options.task ? await normalizeTask(options.task) : undefined;
       const schedule = await storage.schedules.update(id, {
         ...options,
@@ -180,6 +182,7 @@ export function createQueueSchedules({
     },
 
     activate: async (id) => {
+      assertCapability(transport, 'delay');
       const schedule = await storage.schedules.activate(id);
       if (!schedule) throw new Error(`Unknown queue schedule "${id}"`);
       await enqueueNext(schedule);
@@ -206,6 +209,7 @@ export function createQueueSchedules({
     },
 
     upsertDeclarative: async (task) => {
+      assertCapability(transport, 'delay');
       if (!task.cron) {
         throw new Error(
           `@openqueue/sdk: task "${task.id}" cannot create a declarative schedule without cron`,
@@ -268,7 +272,7 @@ export function createQueueSchedules({
       if (failed) throw triggerError;
     },
 
-    close: () => queue.close(),
+    close: async () => undefined,
   };
 
   return api;
@@ -330,12 +334,23 @@ export function nextScheduledTimestamps(
   return dates;
 }
 
-export function assertCron(cron: string): void {
+export function assertCron(cron: string, timezone = 'UTC'): void {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) {
-    throw new Error('Queue schedules require 5-part cron expressions');
+    throw new InvalidScheduleError(
+      'Queue schedules require 5-part cron expressions',
+    );
   }
-  nextCronStep(cron, 'UTC', new Date());
+  try {
+    nextCronStep(cron, timezone, new Date());
+  } catch (err) {
+    throw new InvalidScheduleError(
+      timezone === 'UTC'
+        ? `Invalid cron expression "${cron}"`
+        : `Invalid cron expression "${cron}" or timezone "${timezone}"`,
+      { cause: err },
+    );
+  }
 }
 
 function nextCronStep(cron: string, timezone: string, from: Date): Date {

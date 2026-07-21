@@ -1,4 +1,4 @@
-import type { QueueRunSpan } from '@openqueue/core';
+import type { Principal, QueueRunSpan } from '@openqueue/core';
 import { z } from 'zod';
 import { validateContactPointUrl } from '../core/alert-destinations';
 import { toPublicContactPoint } from '../core/alert-store';
@@ -75,6 +75,8 @@ export interface HandlerInput {
   params: Record<string, string>;
   query: Record<string, string | undefined>;
   body?: unknown;
+  /** Verified caller, when the mounting app ran an auth walk. */
+  principal?: Principal;
 }
 
 /**
@@ -1040,7 +1042,7 @@ export function buildRouteTable(core: WorkbenchCore): RouteDef[] {
         if (!schedules) return storageError;
         try {
           const result = await schedules.runNow(params.id!);
-          return { status: 200, body: { id: result.id } };
+          return { status: 200, body: { id: result.runId } };
         } catch (err) {
           return { status: 404, body: { error: errorMessage(err) } };
         }

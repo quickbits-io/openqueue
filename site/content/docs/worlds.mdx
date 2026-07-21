@@ -1,0 +1,126 @@
+---
+title: Worlds
+description: The two-axis storage model — a delivery transport paired with a durable store, composed into one ownership boundary.
+---
+
+A **world** is where OpenQueue keeps its state. It is the single object the worker
+owns and closes, and it composes two independently pluggable axes:
+
+- **Transport** — the delivery bus: enqueue, delay, retry/redelivery, consume,
+  remove-from-queue. BullMQ (Redis) and Postgres (`SKIP LOCKED` polling) ship
+  today.
+- **Store** — the durable state: runs, run events, schedules, catalog, alerts.
+  This axis already existed in core as the `QueueStorage` interface;
+  `postgresAdapter` is its first implementation.
+
+Folding both into one world means one lifecycle (`start`/`close`), one place to
+configure connections, and one thing the worker owns. Application code
+(`@openqueue/sdk`, `@openqueue/client`) never imports a world — worlds live only
+inside the deployed worker or a control runtime.
+
+## Two axes, not a matrix
+
+Keeping transport and store separate avoids an M×N package explosion (BullMQ +
+Postgres, BullMQ + MySQL, Kafka + Postgres, …). Instead of one package per
+combination, you get **N transports + Z stores** and compose the pair you want:
+
+```ts
+import { worldBullmq } from '@openqueue/world-bullmq';
+import { postgresAdapter } from '@openqueue/sdk';
+
+// BullMQ delivers; Postgres persists run history and schedules.
+worldBullmq({ url: process.env.REDIS_URL!, storage: postgresAdapter({ db, schema }) });
+```
+
+The `redis: { url }` config sugar is exactly this composition with the store left
+off (Redis is then the only backing).
+
+### The composition matrix
+
+| Transport \ Store | (none — Redis cache) | `postgresAdapter` | roadmap: `mysqlAdapter` / `sqliteAdapter` |
+| --- | --- | --- | --- |
+| **`worldBullmq`** (Redis) | `worldBullmq({ url })` — the `redis` sugar | `worldBullmq({ url, storage: postgresAdapter({ db, schema }) })` | `worldBullmq({ url, storage: mysqlAdapter(...) })` |
+| **`worldPostgres`** (SKIP LOCKED) | — | `worldPostgres({ url })` — one database, jobs **and** state | — |
+
+`worldPostgres` is the single-dependency deploy: the same Postgres connection
+runs the queue and stores history, with no Redis anywhere. `worldBullmq +
+postgresAdapter` is the composed two-axis path — the [demo](https://github.com/quickbits-io/openqueue/blob/main/examples/basic/worker.config.ts)
+spells it out:
+
+```ts title="examples/basic/worker.config.ts"
+import { defineConfig, postgresAdapter } from '@openqueue/sdk';
+import { worldBullmq } from '@openqueue/world-bullmq';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { queueSchema } from './schema';
+
+const db = drizzle(postgres(process.env.DATABASE_URL!));
+
+export default defineConfig({
+  namespace: 'openqueue-basic',
+  dirs: ['./worker'],
+  world: worldBullmq({
+    url: process.env.REDIS_URL!,
+    storage: postgresAdapter({ db, schema: queueSchema }),
+  }),
+});
+```
+
+Note that when you pass a `world`, durable state is the world's concern — the
+top-level `storage` field is only for the `redis` sugar and is rejected alongside
+`world`.
+
+## Capabilities are part of the contract
+
+Not every transport supports every feature, and that difference is typed, not
+silent. Each transport declares its capabilities:
+
+```ts
+interface TransportCapabilities {
+  delay: boolean;
+  priority: boolean;
+  flows: boolean;
+  deduplication: boolean;
+  remove: boolean;
+}
+```
+
+| Capability | `worldBullmq` | `worldPostgres` |
+| --- | --- | --- |
+| `delay` | ✓ | ✓ |
+| `priority` | ✓ | ✓ |
+| `flows` | ✓ | ✗ |
+| `deduplication` | ✓ | ✓ |
+| `remove` | ✓ | ✓ |
+
+When you use a feature a transport lacks — for example `enqueueFlow()` on a
+Postgres world — OpenQueue throws a typed `UnsupportedCapabilityError` rather than
+accepting the work and dropping it. Over the control API that surfaces as
+`501 unsupported_capability`.
+
+## Migrations: the store owns its schema
+
+`world-postgres` is **self-migrating**. On `world.start()` it applies its own
+versioned migrations under a Postgres advisory lock (so N booting replicas don't
+race), creates its schema, and tracks a checksummed history table — you never run
+drizzle-kit. The default `migrations: 'manual'` fails closed on a pending
+migration with an actionable message; `migrations: 'auto'` applies them on boot.
+See [Persistence](/docs/persistence) for the self-migrating world versus the
+bring-your-own-Drizzle `postgresAdapter` power-user path.
+
+Two OpenQueue namespaces sharing one database get **delivery** isolation only —
+the `jobs.namespace` column keeps their queues from stealing each other's work,
+but the durable catalog/schedules/runs tables live in the single `openqueue`
+schema and are **not** namespace-scoped. Run each deployment against its own
+database or schema for isolated durable history.
+
+## Where worlds run
+
+- The **worker** instantiates the world, runs `world.start()`, and owns
+  consumers.
+- A **control runtime** (`createControlRuntime`) composes the same world with
+  **no consumers** for an edge/serverless producer-and-observer plane. It
+  validates migrations instead of applying them. See
+  [Two-plane deployment](/docs/two-plane).
+- **App code never touches a world** — it talks to a deployed worker over HTTP via
+  `@openqueue/client`.

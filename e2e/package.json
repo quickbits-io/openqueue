@@ -1,0 +1,32 @@
+{
+  "name": "@openqueue/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "bun run db:reset && bun test",
+    "e2e:split": "bun run db:reset && E2E_SPLIT=1 bun test src/__tests__/split-plane.test.ts",
+    "db:reset": "bun scripts/reset-db.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openqueue/client": "workspace:*",
+    "@openqueue/core": "workspace:*",
+    "@openqueue/sdk": "workspace:*",
+    "@openqueue/worker": "workspace:*",
+    "@openqueue/workbench": "workspace:*",
+    "@openqueue/world-bullmq": "workspace:*",
+    "@openqueue/world-postgres": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "h3": "2.0.1-rc.25",
+    "ioredis": "^5.10.1",
+    "postgres": "^3.4.5",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.18",
+    "drizzle-kit": "^0.31.10",
+    "jose": "^6.2.3",
+    "typescript": "^5.9.3"
+  }
+}

@@ -54,24 +54,42 @@ Each library builds with [`tsup`](https://tsup.egoist.dev) to ESM + `.d.ts` in
 and `files` only ships `dist`, so what you import in development is what users
 get from npm.
 
-## Releases (Changesets)
+## Releases (release-please)
 
-Releases are automated with [Changesets](https://github.com/changesets/changesets).
+Releases are automated with
+[release-please](https://github.com/googleapis/release-please). There is no
+manual version file to add — release-please reads your commit messages.
 
-1. Make your change.
-2. Run `bun run changeset`, select the affected packages, pick a bump
-   (`patch` / `minor` / `major`), and write a short, user-facing summary.
-3. Commit the generated file in `.changeset/` with your PR.
+1. Write [Conventional Commits](https://www.conventionalcommits.org): `fix:` →
+   patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE:` → major. Scope by
+   package where it helps (`feat(core)!: …`).
+2. When your PR merges to `main`, release-please opens (or updates) a
+   **release PR** that bumps versions and writes changelogs from those commits.
+3. Merging the release PR builds the packages and publishes them to npm
+   (`scripts/publish.ts`).
 
-All `@openqueue/*` packages are versioned together, so any release bumps them
-all to the same version.
+All eight publishable `@openqueue/*` packages — `cli`, `client`, `core`, `sdk`,
+`workbench`, `worker`, `world-bullmq`, `world-postgres` — version in **lockstep**
+via release-please's `linked-versions` plugin: one `feat!` anywhere lifts the
+whole group to the same new version. `bump-minor-pre-major` is deliberately
+**unset**, so a breaking commit on a `0.x` line computes `1.0.0` (not `0.2.0`).
 
-When your PR merges to `main`, the **Release** workflow opens (or updates) a
-**"Version Packages"** PR. Merging *that* PR builds the packages and publishes
-them to npm.
+`scripts/publish.ts` auto-discovers every non-private `packages/*`, skips
+versions already on the registry, and publishes with `bun publish`, which
+rewrites `workspace:*` dependencies (e.g. `worker` → `world-bullmq`) to the exact
+released version at pack time. Adding a publishable package means adding it to
+`release-please-config.json` (component + `linked-versions`) and
+`.release-please-manifest.json`; the publish script picks it up automatically.
 
-> Maintainers: publishing requires the `NPM_TOKEN` repository secret and an
-> `@openqueue` npm organization that the token can publish to.
+> **Fallback:** to force a specific version regardless of commit history, set
+> `"release-as": "X.Y.Z"` at the top level of `release-please-config.json` for
+> one release, then remove it. This is the documented escape hatch if the
+> computed version is ever wrong.
+
+> Maintainers: preserve the per-commit `feat!` markers when merging to `main`
+> (merge or rebase-merge — a **squash** flattens them and release-please loses
+> the signal). Publishing requires the `NPM_TOKEN` repository secret and an
+> `@openqueue` npm organization the token can publish to.
 
 ## Pull requests
 

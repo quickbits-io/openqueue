@@ -10,6 +10,16 @@ export {
   type HttpMethod,
   type RouteDef,
 } from './api/handlers';
+export {
+  type ControlAuth,
+  type ControlEnv,
+  resolveControlAuth,
+} from './api/v1/auth';
+export {
+  buildControlRouteTable,
+  type ControlApiOptions,
+  type ControlRuntime,
+} from './api/v1/routes';
 export { AlertManager } from './core/alert-manager';
 export {
   createAlertStore,

@@ -13,7 +13,23 @@
     },
     "test": {
       "dependsOn": ["^build"],
+      "env": ["REDIS_URL"],
       "outputs": []
+    },
+    "test:transport": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "env": ["REDIS_URL", "DATABASE_URL"]
+    },
+    "e2e": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "env": ["REDIS_URL", "DATABASE_URL", "E2E_WORLD"]
+    },
+    "e2e:split": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "env": ["REDIS_URL", "DATABASE_URL", "E2E_WORLD"]
     },
     "dev": {
       "dependsOn": ["^build"],

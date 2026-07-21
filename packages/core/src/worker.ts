@@ -8,22 +8,21 @@ import {
   SpanStatusCode,
   trace,
 } from '@opentelemetry/api';
-import {
-  type ConnectionOptions,
-  type Job,
-  UnrecoverableError,
-  Worker,
-} from 'bullmq';
-import type { Redis } from 'ioredis';
 import { composeDrains } from './compose';
-import { isNonRetryable, serializeError } from './errors';
+import { isNonRetryable, NonRetryableError, serializeError } from './errors';
 import { withJobLogs } from './job-logs';
 import { consoleLogger } from './logger';
-import { bullPrefix, type NamespaceOptions } from './namespace';
-import { buildSnapshot } from './snapshot';
+import { buildSnapshot, unwrapInput } from './snapshot';
 import { withRunContext } from './span-export';
-import { trigger } from './task';
+import { trigger as moduleTrigger } from './task';
 import type {
+  ActiveTransportJob,
+  ConsumeOptions,
+  TransportConsumer,
+} from './transport/types';
+import type {
+  EnqueueOptions,
+  EnqueueResult,
   QueueDrain,
   QueueRunSnapshot,
   TaskContext,
@@ -32,11 +31,24 @@ import type {
 
 export type QueueConcurrency = Record<string, number>;
 
-export interface CreateWorkerOptions extends NamespaceOptions {
-  connection: Redis;
+/** `ctx.trigger` bound to a specific runtime's enqueue path. */
+type QueueTrigger = <I, O = unknown>(
+  target: string | TaskDefinition<I, O>,
+  input: I,
+  opts?: EnqueueOptions,
+) => Promise<EnqueueResult>;
+
+export interface WorkerConsumerOptions {
   drain?: QueueDrain;
   globalConcurrency?: number;
   queueConcurrency?: QueueConcurrency;
+  /**
+   * The runtime's own `trigger`, threaded into `ctx.trigger` so a job's
+   * enqueues land in this runtime's world — not whichever runtime last called
+   * the module-global `bindQueueRuntime`. Falls back to that global for direct
+   * (single-runtime) callers that don't pass it.
+   */
+  trigger?: QueueTrigger;
 }
 
 export interface WorkerGroup {
@@ -49,74 +61,64 @@ export interface WorkerGroup {
 const TRACER_NAME = '@openqueue/sdk';
 const TRACER_VERSION = '0.1.0';
 
-export function createWorker(
+export function createWorkerConsumers<C extends TransportConsumer>(
   jobs: TaskDefinition[],
-  options: CreateWorkerOptions,
-): Worker[] {
+  transport: { id: string; consume(queue: string, options: ConsumeOptions): C },
+  options: WorkerConsumerOptions = {},
+): C[] {
   const drain = composeDrains(options.drain);
   const limiter = createLimiter(options.globalConcurrency);
   const groups = groupJobsByQueue(jobs, options.queueConcurrency);
+  const trigger = options.trigger ?? moduleTrigger;
+  const transportId = transport.id;
 
-  const workers: Worker[] = [];
-  for (const {
-    queue: queueName,
-    jobs: defs,
-    concurrency,
-    maxStalledCount,
-  } of groups) {
-    const defByName = new Map(defs.map((d) => [d.name, d]));
+  return groups.map(
+    ({ queue: queueName, jobs: defs, concurrency, maxStalledCount }) => {
+      const defByName = new Map(defs.map((d) => [d.name, d]));
 
-    const worker = new Worker(
-      queueName,
-      async (job: Job) => {
-        // Captured before the limiter so Dequeued → Started exposes time
-        // spent waiting on global concurrency plus run setup.
-        const dequeuedAt = Date.now();
-        return limiter(() => runJob(job, defByName, drain, dequeuedAt));
-      },
-      {
-        connection: options.connection as unknown as ConnectionOptions,
-        prefix: bullPrefix(options),
+      return transport.consume(queueName, {
         concurrency,
         ...(maxStalledCount !== undefined ? { maxStalledCount } : {}),
-      },
-    );
-
-    worker.on('failed', async (job, err) => {
-      if (!job) return;
-      const def = defByName.get(job.name);
-      if (!def) return;
-      await ensureRunIdentity(job);
-      const final = err instanceof UnrecoverableError || isNonRetryable(err);
-      const willRetry = !final && job.attemptsMade < (job.opts.attempts ?? 0);
-      const snapshot: QueueRunSnapshot = {
-        ...buildSnapshot({
-          job,
-          def,
-          status: willRetry ? 'reattempting' : 'failed',
-          willRetry,
-        }),
-        error: serializeError(err, { retryable: !final }),
-      };
-      await drain.handle({ type: 'fail', run: snapshot });
-    });
-
-    worker.on('completed', async (job) => {
-      const def = defByName.get(job.name);
-      if (!def) return;
-      await ensureRunIdentity(job);
-      const snapshot = buildSnapshot({ job, def, status: 'completed' });
-      await drain.handle({ type: 'complete', run: snapshot });
-    });
-
-    worker.on('error', (err) => {
-      console.error(`[queue] worker "${queueName}" error`, err);
-    });
-
-    workers.push(worker);
-  }
-
-  return workers;
+        isFinal: isNonRetryable,
+        process: (job) => {
+          // Captured before the limiter so Dequeued → Started exposes time
+          // spent waiting on global concurrency plus run setup.
+          const dequeuedAt = Date.now();
+          return limiter(() =>
+            runJob(job, defByName, drain, dequeuedAt, trigger, transportId),
+          );
+        },
+        onCompleted: async (job) => {
+          const def = defByName.get(job.name);
+          if (!def) return;
+          await ensureRunIdentity(job);
+          const snapshot = buildSnapshot({ job, def, status: 'completed' });
+          await drain.handle({ type: 'complete', run: snapshot });
+        },
+        onFailed: async (job, err, { final }) => {
+          if (!job) return;
+          const def = defByName.get(job.name);
+          if (!def) return;
+          await ensureRunIdentity(job);
+          const willRetry =
+            !final && job.attemptsMade < (job.opts.attempts ?? 0);
+          const snapshot: QueueRunSnapshot = {
+            ...buildSnapshot({
+              job,
+              def,
+              status: willRetry ? 'reattempting' : 'failed',
+              willRetry,
+            }),
+            error: serializeError(err, { retryable: !final }),
+          };
+          await drain.handle({ type: 'fail', run: snapshot });
+        },
+        onError: (err) => {
+          console.error(`[queue] worker "${queueName}" error`, err);
+        },
+      });
+    },
+  );
 }
 
 export function groupJobsByQueue(
@@ -172,14 +174,17 @@ function positiveInt(value: number): number {
 }
 
 async function runJob(
-  job: Job,
+  job: ActiveTransportJob,
   defByName: Map<string, TaskDefinition>,
   drain: QueueDrain,
   dequeuedAt: number,
+  trigger: QueueTrigger,
+  transportId: string,
 ): Promise<unknown> {
   const def = defByName.get(job.name);
   if (!def) {
-    throw new UnrecoverableError(`No handler registered for job: ${job.name}`);
+    // Non-retryable: the transport converts this into a permanent failure.
+    throw new NonRetryableError(`No handler registered for job: ${job.name}`);
   }
 
   await ensureRunIdentity(job);
@@ -252,7 +257,7 @@ async function runJob(
       : context.active();
   const attemptName = `Attempt ${attempt}`;
   const attemptAttrs: Attributes = {
-    'messaging.system': 'bullmq',
+    'messaging.system': transportId,
     'messaging.destination.name': def.queue,
     'messaging.operation': 'process',
     'messaging.message.id': job.id ?? '',
@@ -275,11 +280,7 @@ async function runJob(
       } catch (err) {
         errored = true;
         recordSpanError(attemptSpan, err);
-        if (isNonRetryable(err)) {
-          const message =
-            err instanceof Error ? err.message : String(err ?? 'Unknown error');
-          throw new UnrecoverableError(message);
-        }
+        // Rethrow the original error; the transport decides retry vs. final.
         throw err;
       } finally {
         if (!errored) attemptSpan.setStatus({ code: SpanStatusCode.OK });
@@ -290,7 +291,7 @@ async function runJob(
   );
 }
 
-async function ensureRunIdentity(job: Job): Promise<void> {
+async function ensureRunIdentity(job: ActiveTransportJob): Promise<void> {
   const data = job.data;
   if (
     data &&
@@ -322,13 +323,6 @@ async function forceFlush(): Promise<void> {
   };
   const target = provider.getDelegate?.() ?? provider;
   await target.forceFlush?.().catch(() => undefined);
-}
-
-function unwrapInput(data: unknown): unknown {
-  if (data && typeof data === 'object' && '__input' in data) {
-    return (data as { __input: unknown }).__input;
-  }
-  return data;
 }
 
 function flattenProgress(patch: unknown): Attributes {

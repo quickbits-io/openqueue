@@ -100,13 +100,13 @@ const RUN_MODES = [
   {
     label: 'Embed',
     title: 'Inside your server',
-    body: 'Mount the dashboard in the app you already run. Adapters for Hono and Next.js App Router — one catch-all route and Workbench shares your auth.',
+    body: 'Mount the dashboard in the app you already run. h3 and Next.js App Router adapters — or a plain fetch handler anywhere else — one catch-all route and Workbench shares your auth.',
     command: "import { workbench } from '…/next'",
   },
   {
     label: 'Ship',
     title: 'In a container',
-    body: 'openqueue build bundles every task into a single manifest; openqueue start runs it. Or point the prebuilt Docker worker at your Redis and go.',
+    body: 'openqueue build compiles a self-contained Nitro server artifact; openqueue start runs it. Or point the prebuilt Docker worker at your Redis and go.',
     command: 'openqueue build && openqueue start',
   },
 ];
@@ -245,8 +245,8 @@ export default function HomePage() {
               a config and your first task.{' '}
               <code className="font-mono text-neutral-300">dev</code> runs the
               worker with hot reload.{' '}
-              <code className="font-mono text-neutral-300">build</code> bundles
-              every task into one manifest, and{' '}
+              <code className="font-mono text-neutral-300">build</code> compiles
+              a self-contained server artifact, and{' '}
               <code className="font-mono text-neutral-300">start</code> runs it
               in production. Failed runs retry with backoff and land in the
               dashboard — not in your logs at 3am.

@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { createRunsApi } from '../runs';
 import type {
+  CancelRunResult,
   QueueRun,
   QueueRunListOptions,
   QueueRunStore,
   RunStatus,
 } from '../types';
+
+const stubCancel = async (): Promise<CancelRunResult> => ({
+  outcome: 'not_found',
+});
 
 describe('queue runs api', () => {
   it('retrieves a run by id', async () => {
@@ -14,6 +19,7 @@ describe('queue runs api', () => {
         run({ id: 'run-1', status: 'completed' }),
         run({ id: 'run-2', status: 'queued' }),
       ]),
+      stubCancel,
     );
 
     await expect(api.retrieve('run-1')).resolves.toMatchObject({
@@ -25,16 +31,19 @@ describe('queue runs api', () => {
 
   it('polls until the run reaches a terminal status', async () => {
     let attempts = 0;
-    const api = createRunsApi({
-      list: async () => ({
-        data: [
-          attempts++ === 0
-            ? run({ id: 'run-1', status: 'executing' })
-            : run({ id: 'run-1', status: 'failed' }),
-        ],
-        hasMore: false,
-      }),
-    });
+    const api = createRunsApi(
+      {
+        list: async () => ({
+          data: [
+            attempts++ === 0
+              ? run({ id: 'run-1', status: 'executing' })
+              : run({ id: 'run-1', status: 'failed' }),
+          ],
+          hasMore: false,
+        }),
+      },
+      stubCancel,
+    );
 
     await expect(
       api.poll('run-1', { pollIntervalMs: 0, maxAttempts: 3 }),
@@ -47,15 +56,18 @@ describe('queue runs api', () => {
 
   it('throws after the configured max attempts', async () => {
     let attempts = 0;
-    const api = createRunsApi({
-      list: async () => {
-        attempts++;
-        return {
-          data: [run({ id: 'run-1', status: 'executing' })],
-          hasMore: false,
-        };
+    const api = createRunsApi(
+      {
+        list: async () => {
+          attempts++;
+          return {
+            data: [run({ id: 'run-1', status: 'executing' })],
+            hasMore: false,
+          };
+        },
       },
-    });
+      stubCancel,
+    );
 
     await expect(
       api.poll('run-1', { pollIntervalMs: 0, maxAttempts: 2 }),

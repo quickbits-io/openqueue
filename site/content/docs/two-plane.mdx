@@ -1,0 +1,113 @@
+---
+title: Two-plane deployment
+description: Split producing and observing jobs from executing them — an edge/serverless control plane over a self-migrating execution worker.
+---
+
+Most deployments run one process that both **produces** work (enqueue, schedule,
+observe) and **executes** it (consumers). You can split those into two planes
+over one shared database:
+
+- **Execution plane** — a normal worker. It owns the schema (runs migrations),
+  publishes the task catalog, and runs consumers.
+- **Control plane** — a producer/observer surface with **no consumers**. It
+  triggers tasks, manages schedules, and reads run history. It never applies
+  DDL, so it is safe to run from an edge or serverless runtime that must cold
+  start fast.
+
+The control plane hands work to the shared database; the execution plane's
+consumers pick it up. Both agree on a `namespace`.
+
+## The control runtime
+
+`createControlRuntime` composes a [world](/docs/worlds) into `{ trigger, runs,
+schedules, catalog, close }` — the same producer/observer surface a worker
+exposes, minus consumers. It lives on the import-clean `@openqueue/core/control`
+subpath, whose bundle graph carries no ioredis or bullmq.
+
+```ts
+import { createControlRuntime } from '@openqueue/core/control';
+import { buildControlApp } from '@openqueue/workbench/control';
+import { worldPostgres } from '@openqueue/world-postgres';
+import { H3 } from 'h3';
+
+const runtime = await createControlRuntime(
+  worldPostgres({ url: process.env.DATABASE_URL! }),
+  { namespace: 'orders' },
+);
+
+const app = new H3();
+app.mount(
+  '/openqueue/v1',
+  buildControlApp({
+    runtime,
+    auth: { token: process.env.OPENQUEUE_TOKEN },
+    info: { namespace: 'orders' },
+  }),
+);
+
+export default app;
+```
+
+Point the [`@openqueue/client`](/docs/quickstart) at this app and every
+`trigger`, `runs`, and `schedules` call routes to the execution worker.
+
+## The control plane never migrates
+
+`createControlRuntime` validates migrations instead of applying them. If the
+world exposes migrations and any step is pending or checksum-mismatched, it
+throws — even when the world factory was configured with `migrations: 'auto'`.
+This codifies the lifecycle seam: **only the execution worker
+(`world.start()`) applies DDL.** A single world factory imported into both
+configs therefore can never leak a schema migration into an edge cold start.
+
+The practical consequence is a **first-deploy ordering**: boot the execution
+worker before the control plane. Bring the control plane up against an
+unmigrated schema and it fails closed with an actionable error rather than
+racing to create tables.
+
+## Node / Bun
+
+Give the control plane a connection string; it owns and closes the client.
+
+```ts
+const runtime = await createControlRuntime(
+  worldPostgres({ url: process.env.DATABASE_URL! }),
+  { namespace: 'orders' },
+);
+```
+
+## Cloudflare Workers / edge
+
+Inject a caller-owned client (e.g. a Neon serverless or Hyperdrive-backed
+`postgres` client) instead of a URL, enable `nodejs_compat`, and cache the
+runtime at module scope so it is composed once per isolate rather than per
+request.
+
+```ts
+import { createControlRuntime } from '@openqueue/core/control';
+import postgres from 'postgres';
+
+let runtime: ReturnType<typeof createControlRuntime> | undefined;
+
+function controlRuntime(env: Env) {
+  runtime ??= createControlRuntime(
+    worldPostgres({ db: postgres(env.DATABASE_URL) }),
+    { namespace: 'orders' },
+  );
+  return runtime;
+}
+```
+
+The `@openqueue/core/control`, `@openqueue/core/auth`, and
+`@openqueue/workbench/control` bundle graphs are CI-verified free of
+ioredis/bullmq and buildable for a browser target — the only surviving node
+builtin is `node:crypto` (the enqueuer's `randomUUID`, satisfied by
+`nodejs_compat`), plus the polyfill deps it pulls in. Running the control plane
+on `workerd` is supported by that graph but is not yet exercised in CI; treat it
+as manually verified.
+
+## What lives only on the execution plane
+
+Spans and alerts are execution-plane concerns — they are produced where jobs
+run. `createControlRuntime` omits them by design; wire OpenTelemetry and alert
+delivery on the worker, not the control plane.

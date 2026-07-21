@@ -1,7 +1,7 @@
 import type { Queue } from 'bullmq';
 import type { WorkbenchOptions } from '../core/types';
 import { WorkbenchCore } from '../core/workbench';
-import { buildWorkbenchApp } from '../server/hono-app';
+import { buildWorkbenchApp } from '../server/h3-app';
 
 export interface FetchHandlerResult {
   /**

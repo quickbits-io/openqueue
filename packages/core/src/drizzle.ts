@@ -1,4 +1,14 @@
-import { and, asc, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  lte,
+  notInArray,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -9,6 +19,7 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { TERMINAL_RUN_STATUSES } from './store/filter';
 import type {
   AlertContactPoint,
   AlertContactPointPreset,
@@ -58,7 +69,6 @@ interface CatalogRow {
   attempts: number;
   backoff: BackoffOptions;
   concurrency: number;
-  ttl: number | null;
   max_stalled_count: number | null;
   cron: string | null;
   tags: string[];
@@ -754,7 +764,6 @@ function catalogValues(entry: QueueCatalogEntry) {
     attempts: entry.attempts,
     backoff: entry.backoff,
     concurrency: entry.concurrency,
-    ttl: entry.ttl,
     maxStalledCount: entry.maxStalledCount,
     cron: entry.cron,
     tags: entry.tags,
@@ -773,7 +782,6 @@ function catalogSelect(schema: QueueDrizzleSchema) {
     attempts: schema.queueCatalog.attempts,
     backoff: schema.queueCatalog.backoff,
     concurrency: schema.queueCatalog.concurrency,
-    ttl: schema.queueCatalog.ttl,
     max_stalled_count: schema.queueCatalog.maxStalledCount,
     cron: schema.queueCatalog.cron,
     tags: schema.queueCatalog.tags,
@@ -884,7 +892,6 @@ function mapCatalog(row: CatalogRow): QueueCatalogEntry {
     attempts: row.attempts,
     backoff: row.backoff,
     concurrency: row.concurrency,
-    ttl: row.ttl ?? undefined,
     maxStalledCount: row.max_stalled_count ?? undefined,
     cron: row.cron ?? undefined,
     tags: row.tags,
@@ -1150,10 +1157,19 @@ async function persistRun(
 ): Promise<void> {
   const values = runValues(run);
   const { id: _id, createdAt: _createdAt, ...set } = values;
-  await db.insert(schema.queueRuns).values(values).onConflictDoUpdate({
-    target: schema.queueRuns.id,
-    set,
-  });
+  await db
+    .insert(schema.queueRuns)
+    .values(values)
+    .onConflictDoUpdate({
+      target: schema.queueRuns.id,
+      set,
+      // A duplicate enqueue of a retained job is a no-op (no worker runs it), so
+      // an enqueue snapshot must never resurrect a run that already finished.
+      setWhere:
+        type === 'enqueue'
+          ? notInArray(schema.queueRuns.status, [...TERMINAL_RUN_STATUSES])
+          : undefined,
+    });
   await db.insert(schema.queueRunEvents).values({
     id: crypto.randomUUID(),
     runId: run.id,

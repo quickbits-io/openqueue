@@ -33,16 +33,19 @@ export default defineConfig({
 
 | Field | Description |
 | --- | --- |
-| `namespace` | Prefix for every Redis key this worker touches. Lets multiple apps share one Redis. |
+| `namespace` | Prefix for every key this worker touches. Lets multiple apps share one backend. |
 | `dirs` | Directories scanned for exported `task()` definitions. |
 | `tasks` | Explicit task modules (`{ module, export? }`) instead of — or alongside — directory scanning. |
 | `exclude` | Glob patterns removed from discovery (tests, fixtures). |
-| `redis.url` | Redis connection string. |
+| `redis.url` | Redis connection string. Sugar for a BullMQ [world](/docs/worlds); **XOR** with `world`. |
 | `redis.bullPrefix` | Override the BullMQ key prefix. |
-| `storage.adapter` | A `QueueStorage` implementation — use `postgresAdapter` to persist run history. |
+| `world` | A [world](/docs/worlds) factory (e.g. `worldPostgres({ url })`) — the non-BullMQ path. XOR with `redis`. When set, the world owns durable state, so `storage` is not accepted. |
+| `storage` | A `QueueStorage` — use `postgresAdapter` to persist run history alongside the `redis` transport. |
 | `drains` | Sinks for run lifecycle events; `consoleDrain()` ships in the box, `composeDrains()` combines several. |
 | `concurrency.global` | Worker-wide cap on parallel jobs. |
 | `concurrency.queues` | Per-queue caps, by queue name. |
+| `api.token` | Bearer token(s) for the `/openqueue/v1` control API. Sugar for a leading `apiKey()` strategy. Unset = open in dev, 401 in production. |
+| `api.auth` | Ordered [`AuthStrategy`](/docs/upgrading-to-1.0#new-surfaces) walk for the control API. Empty array = always 401 (fail-closed). |
 | `metrics` | Toggle metric collection and key prefix. |
 | `workbench` | Dashboard options — see below. |
 | `build` | `outDir`, `extraFiles`, `external` for `openqueue build`. |
@@ -55,7 +58,7 @@ export default defineConfig({
 | `title` | Name shown in the dashboard chrome. |
 | `basePath` | Mount path, for example `/workbench`. |
 | `readonly` | Disable mutating actions (retry, enqueue, pause). |
-| `auth` | `{ username, password }` for basic auth. |
+| `auth` | `{ username, password }` for basic auth, or an ordered [`AuthStrategy`](/docs/upgrading-to-1.0#new-surfaces) walk. Unset = dashboard open. |
 | `tagFields` | Payload field names that Workbench can extract as filterable tags. |
 
 ## Persistent run history
@@ -72,9 +75,7 @@ export default defineConfig({
   namespace: 'my-app',
   dirs: ['./worker'],
   redis: { url: process.env.REDIS_URL! },
-  storage: {
-    adapter: postgresAdapter({ db, schema: queueSchema }),
-  },
+  storage: postgresAdapter({ db, schema: queueSchema }),
 });
 ```
 

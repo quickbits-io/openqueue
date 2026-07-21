@@ -1,4 +1,4 @@
-import type { Job } from 'bullmq';
+import type { ActiveTransportJob } from './transport/types';
 import type {
   EnqueueMeta,
   QueueRunSnapshot,
@@ -7,7 +7,7 @@ import type {
 } from './types';
 
 interface BuildArgs {
-  job: Job;
+  job: ActiveTransportJob;
   def: TaskDefinition;
   status: RunStatus;
   willRetry?: boolean;
@@ -27,7 +27,7 @@ export function buildSnapshot({
     __otel?: Record<string, string>;
   };
 
-  const input = '__input' in rawData ? rawData.__input : rawData;
+  const input = unwrapInput(rawData);
   const meta = rawData.__meta ?? {};
   const metadata = rawData.__metadata ?? {};
   const traceCarrier = rawData.__otel;
@@ -76,4 +76,23 @@ export function buildSnapshot({
 
 function stringOrUndef(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Recover a job's task input from its transport envelope.
+ *
+ * The enqueuer wraps input as `{ __input, __runId, __meta, __metadata }`. A job
+ * whose input was `undefined` serializes to an envelope with **no** `__input`
+ * key — JSON (Postgres jsonb, BullMQ) drops `undefined` values — so the key's
+ * absence alone cannot distinguish "undefined input" from a raw, externally
+ * enqueued job. Detect our envelope by its always-present `__runId` + `__metadata`
+ * markers and return `undefined`; anything without them is treated as raw data
+ * and returned as-is.
+ */
+export function unwrapInput(data: unknown): unknown {
+  if (data && typeof data === 'object') {
+    if ('__input' in data) return (data as { __input: unknown }).__input;
+    if ('__runId' in data && '__metadata' in data) return undefined;
+  }
+  return data;
 }

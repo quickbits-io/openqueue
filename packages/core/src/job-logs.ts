@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { format } from 'node:util';
 import { trace } from '@opentelemetry/api';
-import type { Job } from 'bullmq';
 
 const consoleMethods = ['log', 'info', 'warn', 'error', 'debug'] as const;
 
@@ -22,7 +21,7 @@ const originalConsole: Record<ConsoleMethod, (...args: unknown[]) => void> = {
 let consoleBridgeInstalled = false;
 
 export async function withJobLogs<T>(
-  job: Job,
+  job: { log(line: string): Promise<unknown> },
   fn: () => Promise<T>,
 ): Promise<T> {
   installConsoleBridge();

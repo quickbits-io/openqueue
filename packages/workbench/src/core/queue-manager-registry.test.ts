@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { Queue } from 'bullmq';
+import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { buildRouteTable } from '../api/handlers';
 import { QueueManager } from './queue-manager';
@@ -21,6 +21,7 @@ function queue(name: string): Queue {
 
 function job(): WorkbenchJobDefinition {
   return {
+    id: 'send-message',
     name: 'send-message',
     queue: 'system',
     schema: jobSchema,
@@ -46,10 +47,8 @@ function flow(): WorkbenchFlowTemplate {
 
 function enqueueResult(id: string) {
   return {
-    id,
     runId: id,
     jobId: id,
-    transportJobId: id,
   };
 }
 

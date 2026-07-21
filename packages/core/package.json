@@ -1,7 +1,7 @@
 {
   "name": "@openqueue/core",
-  "version": "0.1.4",
-  "description": "Core engine for OpenQueue — typed tasks, queues, schedules, flows, and persistence on top of BullMQ + Redis.",
+  "version": "1.0.0",
+  "description": "Core engine for OpenQueue — typed tasks, queues, schedules, flows, and Drizzle persistence over a pluggable world (delivery transport + durable store).",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/quickbits-io/openqueue/tree/main/packages/core#readme",
@@ -18,8 +18,6 @@
     "queue",
     "jobs",
     "background-jobs",
-    "bullmq",
-    "redis",
     "worker",
     "bun",
     "typescript"
@@ -34,6 +32,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js",
+      "default": "./dist/auth.js"
+    },
+    "./control": {
+      "types": "./dist/control.d.ts",
+      "import": "./dist/control.js",
+      "default": "./dist/control.js"
+    },
     "./drizzle": {
       "types": "./dist/drizzle.d.ts",
       "import": "./dist/drizzle.js",
@@ -43,13 +51,18 @@
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js",
       "default": "./dist/types.js"
+    },
+    "./world": {
+      "types": "./dist/world.d.ts",
+      "import": "./dist/world.js",
+      "default": "./dist/world.js"
     }
   },
   "files": [
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.11.1"
   },
   "publishConfig": {
     "access": "public"
@@ -61,30 +74,18 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "test": "vitest run",
+    "test:transport": "vitest run src/transport",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "bullmq": "^5.71.1",
-    "cron-parser": "^4.9.0",
-    "drizzle-orm": "^0.45.1",
-    "ioredis": "^5.10.1",
-    "zod": "^4.1.13"
-  },
-  "peerDependencies": {
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/sdk-trace-base": "^2.5.0"
-  },
-  "peerDependenciesMeta": {
-    "@opentelemetry/api": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-trace-base": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/sdk-trace-base": "^2.5.0",
+    "cron-parser": "^4.9.0",
+    "drizzle-orm": "^0.45.1",
+    "jose": "^6.2.3",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
     "@types/node": "^22.10.10",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",

@@ -42,7 +42,7 @@ run: async (payload) => {
 | --- | --- |
 | `RetryableError` | Fails the attempt; retries until `attempts` is exhausted. |
 | `NonRetryableError` | Fails the run immediately — no further attempts. |
-| `JobTimeoutError` | Thrown by the runtime when a run exceeds the task's `ttl`. |
+| `JobTimeoutError` | A run exceeded its allotted runtime; fails immediately with no further attempts. |
 | `JobExpiredError` | The job sat in the queue past its expiry and was dropped. |
 | `JobCanceledError` | The run was canceled (for example from Workbench). |
 

@@ -4,8 +4,9 @@ The `openqueue` command-line tool for
 [OpenQueue](https://github.com/quickbits-io/openqueue) — scaffold, develop,
 build, and run workers.
 
-> **Bun-native.** The CLI runs on [Bun](https://bun.sh) (it uses Bun's bundler,
-> process, and glob APIs) and runs your TypeScript task files directly.
+> **Bun-native.** The CLI runs on [Bun](https://bun.sh) (it uses Bun's process
+> and glob APIs) and runs your TypeScript task files directly. `openqueue build`
+> compiles the worker into a Nitro production artifact.
 
 ```bash
 bun add -d @openqueue/cli
