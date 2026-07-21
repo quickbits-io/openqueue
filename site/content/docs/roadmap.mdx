@@ -1,355 +1,100 @@
 ---
 title: Roadmap
-description: Planned runtime and broker work for OpenQueue.
+description: What shipped as OpenQueue's worlds architecture in 1.0, and the transport and control-plane work still ahead.
 ---
 
-OpenQueue currently uses BullMQ on Redis as its queue runtime. That is still
-the default path: it is mature, simple to run, and supports the full feature
-set today. The next major runtime direction is making that dependency an
-adapter instead of the center of the architecture, so OpenQueue can support
-other brokers such as Kafka and RabbitMQ without changing the task API.
+This page began as the design pitch for a broker-neutral runtime boundary. Most
+of it shipped in 1.0 — under the name **worlds** — and what's left is the real
+forward roadmap below.
 
-## Runtime adapters
+## Shipped in 1.0: the worlds architecture
 
-The target is a broker-neutral runtime boundary:
+The "runtime adapter" proposal landed as [worlds](/docs/worlds): a delivery
+backend is a **transport × store** composition, selected with a `world:` field
+(not `runtime:`).
 
-```ts
-export default defineConfig({
-  namespace: 'my-app',
-  dirs: ['./worker'],
-  runtime: kafkaRuntime({
-    brokers: process.env.KAFKA_BROKERS!.split(','),
-    groupId: 'my-app-workers',
-  }),
-  storage: postgresAdapter({ db, schema: queueSchema }),
-});
-```
+- **Transport × store composition.** `worldBullmq({ url, storage })` pairs a
+  Redis/BullMQ transport with any durable store; `@openqueue/world-postgres` is
+  a self-migrating `SELECT … FOR UPDATE SKIP LOCKED` transport with a Drizzle
+  store and zero Redis. A world owns its own durable state.
+- **The `redis:` sugar** is exactly what this page asked for: `redis: { url }`
+  resolves to `worldBullmq({ url })` — no new imports for the common path.
+- **Capabilities are part of the contract.** Each transport declares what it
+  supports, and an unsupported operation (e.g. flows on a queue-less world)
+  returns a typed `501 unsupported_capability` instead of failing silently.
+- **A frozen contract.** `QueueTransport`, `QueueStorage`, and `OpenQueueWorld`
+  are frozen at `WORLD_SPEC_VERSION = 1`, so a third-party world has a stable
+  target.
+- **The `/openqueue/v1` control plane** the old "Workbench changes" section
+  wished for now ships — mounted by the worker, consumed by `@openqueue/client`,
+  and the basis for the [two-plane](/docs/two-plane) control/execution split.
 
-The existing BullMQ setup would become the first adapter:
+See [Worlds](/docs/worlds), [Two-plane](/docs/two-plane), and
+[Upgrading to 1.0](/docs/upgrading-to-1.0). Everything below is what remains.
 
-```ts
-export default defineConfig({
-  namespace: 'my-app',
-  dirs: ['./worker'],
-  runtime: bullmqRuntime({
-    redis: { url: process.env.REDIS_URL! },
-  }),
-});
-```
+## 1.0.x follow-ups
 
-For a compatibility window, `redis` can keep selecting BullMQ implicitly:
+Near-term work that doesn't break the frozen surface:
 
-```ts
-export default defineConfig({
-  namespace: 'my-app',
-  dirs: ['./worker'],
-  redis: { url: process.env.REDIS_URL! },
-});
-```
+- **Unpin h3 to stable v2.** The workbench and worker pin h3 to its
+  release-candidate line; the unpin lands when a stable h3 v2 ships. It's a
+  patch bump, not a breaking change.
+- **NDJSON run streaming.** A streaming variant of the run-events endpoint so
+  the dashboard and `@openqueue/client` can tail a run's lifecycle without
+  polling.
+- **`withOpenqueue` helper.** A small wrapper to mount the worker's control API
+  and Workbench into an existing app with one call, alongside the current h3 and
+  Next adapters.
 
-The public task model should stay stable:
+## New worlds: Kafka and RabbitMQ
 
-- `task()` keeps defining an id, schema, handler, queue, concurrency,
-  retries, timeout, TTL, cron schedules, and hooks.
-- `task.trigger()` keeps being the enqueue API.
-- `enqueueFlow()` remains the API for dependent work, but it becomes a
-  runtime capability instead of a BullMQ-only assumption.
-- `ctx.logger`, `ctx.progress()`, `ctx.runId`, `ctx.attempt`, and OpenTelemetry
-  context stay broker-neutral.
-- Workbench keeps showing queues, runs, flows, schedules, errors, metrics,
-  and logs, but reads from runtime capabilities plus durable storage instead
-  of directly using BullMQ APIs.
+BullMQ/Redis and Postgres are the two shipped transports. The next ones target
+teams whose operational center of gravity is a broker they already run:
 
-## Why this matters
-
-Redis/BullMQ is a good default, but different teams already have different
-operational centers of gravity:
-
-| Runtime | Why teams want it |
+| Transport | Why teams want it |
 | --- | --- |
-| BullMQ / Redis | Simple local development, delayed jobs, retries, flows, and good all-in-one semantics. |
+| `worldBullmq` (Redis) | Simple local dev, delayed jobs, retries, flows, good all-in-one semantics. **Shipped.** |
+| `worldPostgres` | One database for jobs and history, no Redis. **Shipped.** |
 | Kafka | Existing event backbone, high throughput, durable ordered logs, replay, large worker fleets. |
-| RabbitMQ | Mature work queues, routing keys, exchanges, acknowledgements, prefetch, and enterprise operations. |
+| RabbitMQ | Mature work queues, routing keys, exchanges, acknowledgements, prefetch, familiar operations. |
 | SQS / Pub/Sub / NATS | Managed cloud queues, simpler operations, or lower-latency messaging in specific environments. |
 
-The goal is not to pretend every broker has the same semantics. The goal is
-to expose the same OpenQueue developer API where possible, make runtime
-differences explicit through capabilities, and keep operational state
-portable through storage.
+The goal is not to pretend every broker has the same semantics. It's to expose
+the same task API where possible, make transport differences explicit through
+capabilities, and keep operational state portable through the store.
 
-## Capability model
-
-Not every broker can support every feature natively. Adapters should declare
-what they support:
+A new broker ships as a `@openqueue/world-<broker>` package exporting a
+`world<Broker>(...)` factory, consistent with `world-bullmq`/`world-postgres`:
 
 ```ts
-type RuntimeCapabilities = {
-  delayed: 'native' | 'storage' | false;
-  retries: 'native' | 'storage' | false;
-  priorities: 'native' | 'emulated' | false;
-  flows: 'native' | 'storage' | false;
-  schedules: 'native' | 'storage' | false;
-  pauseResume: 'queue' | 'worker' | false;
-  repeatableJobs: 'native' | 'storage' | false;
-  jobLogs: 'native' | 'storage' | false;
-  jobProgress: 'native' | 'storage' | false;
-  inspectJobs: 'native' | 'storage' | false;
-};
-```
-
-Workbench and the CLI can use those capabilities to decide which controls to
-show. For example, a Kafka runtime may support retry and delay through
-Postgres storage, but not support true queue-level pause. RabbitMQ may support
-dead-letter routing and manual acknowledgements natively, while using storage
-for long delays and flow dependency tracking.
-
-## Runtime contract
-
-The adapter boundary should be small and boring. Core owns task discovery,
-payload validation, lifecycle events, OpenTelemetry, storage writes, and the
-developer API. Runtime adapters own broker IO.
-
-```ts
-type QueueRuntime = {
-  name: string;
-  capabilities: RuntimeCapabilities;
-
-  connect(options: RuntimeConnectOptions): Promise<void>;
-  close(): Promise<void>;
-
-  enqueue(message: RuntimeMessage, options: EnqueueOptions): Promise<EnqueueResult>;
-  enqueueBatch(messages: RuntimeMessage[]): Promise<EnqueueResult[]>;
-
-  createWorker(options: WorkerOptions): RuntimeWorker;
-
-  inspect?: RuntimeInspector;
-  scheduler?: RuntimeScheduler;
-  flows?: RuntimeFlowEngine;
-};
-```
-
-Messages should carry OpenQueue fields independently of broker metadata:
-
-```ts
-type RuntimeMessage = {
-  id: string;
-  namespace: string;
-  queue: string;
-  taskId: string;
-  payload: unknown;
-  meta?: Record<string, unknown>;
-  traceparent?: string;
-  createdAt: string;
-  scheduledFor?: string;
-  attempt: number;
-  maxAttempts: number;
-  timeoutMs?: number;
-  ttlMs?: number;
-  priority?: number;
-  dedupeKey?: string;
-  flow?: {
-    id: string;
-    nodeId: string;
-    parentId?: string;
-    dependencyIds?: string[];
-  };
-};
-```
-
-The worker surface should normalize acknowledgement behavior:
-
-```ts
-type RuntimeJob = {
-  message: RuntimeMessage;
-  ack(): Promise<void>;
-  retry(error: SerializedError, options: RetryDecision): Promise<void>;
-  fail(error: SerializedError): Promise<void>;
-  extendLock?(durationMs: number): Promise<void>;
-};
-```
-
-Core can then run the same lifecycle for every backend:
-
-1. Receive a runtime job.
-2. Load the matching task definition.
-3. Validate payload with the task schema.
-4. Create the execution context.
-5. Run the task with timeout handling.
-6. Persist progress, logs, result, and errors.
-7. Ack, retry, or fail through the runtime adapter.
-8. Emit drains and metrics.
-
-## Storage as the portable source of truth
-
-BullMQ currently owns a lot of state in Redis: delayed jobs, job status,
-attempts, logs, repeatable jobs, flows, and queue counters. A multi-broker
-OpenQueue needs more of that state in the storage adapter, especially for
-brokers that do not expose BullMQ-like inspection APIs.
-
-The existing Postgres adapter is the right foundation, but the schema likely
-needs several runtime-neutral tables:
-
-| Table | Purpose |
-| --- | --- |
-| `runs` | Current durable run state, including status, task id, queue, timestamps, attempt, payload, result, error, and metadata. |
-| `run_events` | Append-only event log for enqueue, start, progress, log, complete, fail, retry, cancel, and schedule ticks. |
-| `outbox` | Transactional enqueue intents that can be delivered to the broker after the database commit. |
-| `queue_state` | Queue pause state, drain state, runtime metadata, and visibility for Workbench. |
-| `flow_nodes` | Dependency graph state for broker-neutral flows. |
-| `dead_letters` | Terminal failures with enough broker metadata to diagnose poison messages. |
-| `runtime_offsets` | Optional adapter checkpoints when a backend needs explicit offset or cursor bookkeeping. |
-
-For BullMQ-only installs, storage can remain optional for basic queues. For
-Kafka and RabbitMQ, storage should be strongly recommended and may be
-required for schedules, delayed retries, flow dependencies, Workbench
-inspection, and exact operational history.
-
-## Transactional enqueue
-
-Adapters should support an outbox path so application state and enqueueing do
-not drift:
-
-```ts
-await db.transaction(async (tx) => {
-  await tx.insert(invoices).values(invoice);
-
-  await queue.outbox(tx).enqueue(sendInvoice, {
-    invoiceId: invoice.id,
-  });
+export default defineConfig({
+  namespace: 'my-app',
+  dirs: ['./worker'],
+  world: worldKafka({
+    brokers: process.env.KAFKA_BROKERS!.split(','),
+    groupId: 'my-app-workers',
+    storage: postgresAdapter({ db, schema: queueSchema }),
+  }),
 });
 ```
 
-The outbox dispatcher then publishes to BullMQ, Kafka, RabbitMQ, or another
-adapter and marks the outbox row delivered. This is especially important for
-Kafka and RabbitMQ because a database commit and a broker publish are separate
-systems.
+The transport implements the frozen `QueueTransport` contract and declares its
+capabilities; core owns task discovery, validation, lifecycle events,
+OpenTelemetry, store writes, and the task API. A new transport does not
+re-specify the contract — see [Worlds](/docs/worlds) for `QueueTransport`,
+`QueueStorage`, and `OpenQueueWorld`.
 
-Important details:
+Brokers that lack BullMQ-style inspection lean harder on the store, so the store
+grows a few transport-neutral tables as these worlds land: an `outbox` for
+transactional enqueue, `flow_nodes` for a portable flow graph, `dead_letters`
+for terminal failures with enough broker metadata to diagnose poison messages,
+and optional `offsets` for transports that need explicit cursor bookkeeping.
 
-- Outbox rows need a deterministic id and optional `dedupeKey`.
-- Dispatch should be idempotent.
-- Broker publish confirmation should be recorded.
-- Failed publish attempts should retry with backoff.
-- Workbench should show stuck outbox rows as operational errors.
-- Enqueue without an outbox can still exist for simple cases, but should be
-  documented as at-least-once without transactional coupling.
-
-## Retry and delay model
-
-BullMQ has native attempts, backoff, and delayed jobs. Kafka and RabbitMQ do
-not map cleanly to that model across all delay lengths and operational modes.
-OpenQueue should own the retry policy and let each adapter choose the best
-delivery mechanism.
-
-The runtime-neutral retry decision should include:
-
-- attempt number
-- max attempts
-- next run time
-- backoff reason
-- serialized error
-- retryable versus non-retryable classification
-- original run id
-- optional new broker message id
-
-For short delays, a broker-native mechanism can be acceptable. For long or
-important delays, storage-backed scheduling is safer:
-
-1. Worker records a retry event and next attempt time.
-2. Worker acks or rejects the broker message according to adapter semantics.
-3. Scheduler scans due retries from storage.
-4. Scheduler republishes a new broker message for the same run.
-5. Worker receives the retry and continues with incremented attempt state.
-
-This makes retry behavior consistent across backends even when broker
-features differ.
-
-## Scheduling
-
-OpenQueue has two scheduling shapes:
-
-- declarative schedules from task definitions, such as `cron`
-- dynamic schedules created through runtime APIs and shown in Workbench
-
-The adapter roadmap should move schedule ownership into storage plus a
-scheduler process. Broker-native delayed messages can be an optimization, but
-the durable schedule source should be Postgres.
-
-The scheduler should:
-
-- claim due schedule instances with row-level locking
-- create run records before publishing
-- publish through the runtime adapter
-- record schedule tick events
-- handle missed ticks explicitly
-- expose next run, last run, status, and error state to Workbench
-
-This avoids tying schedules to BullMQ repeatable jobs and gives Kafka and
-RabbitMQ the same schedule semantics.
-
-## Flows
-
-BullMQ has native flow support. Kafka and RabbitMQ do not have an equivalent
-parent-child job graph built in. To keep `enqueueFlow()` portable, OpenQueue
-needs a storage-backed flow engine.
-
-Flow state should track:
-
-- flow id
-- node id
-- task id
-- queue
-- payload
-- parent node id
-- dependency node ids
-- node status
-- output or error
-- timestamps
-
-Execution model:
-
-1. Insert all flow nodes in storage.
-2. Publish only nodes whose dependencies are satisfied.
-3. On node completion, mark it completed and check dependents.
-4. Publish newly unblocked children through the runtime adapter.
-5. If a node fails terminally, mark dependent nodes blocked or failed
-   according to the flow policy.
-
-BullMQ can keep using native flows internally at first, but the long-term
-shape should be the same Workbench graph and same flow state regardless of
-broker.
-
-## Workbench changes
-
-Workbench currently benefits from BullMQ inspection APIs. A broker-neutral
-Workbench needs an OpenQueue control plane API instead of direct BullMQ
-objects.
-
-The control plane should expose:
-
-- queue list and queue metadata
-- run list with filters and pagination
-- run detail, payload, output, error, logs, and event timeline
-- queue counters derived from storage plus runtime metrics
-- retry, cancel, remove, and promote operations where supported
-- schedule list, detail, pause, resume, create, update, delete
-- flow list and graph detail
-- runtime capabilities for feature gating
-- runtime health and broker connection state
-
-Controls should degrade by capability. For example:
-
-- BullMQ can show native delayed counts and promote delayed jobs.
-- Kafka can show consumer lag and partition assignment, but may not support
-  promoting an individual broker message.
-- RabbitMQ can show queue depth, consumers, unacked count, and dead-letter
-  routing, but long-delay promotion may be storage-driven.
-
-## Kafka runtime
+## Kafka
 
 Kafka is a strong fit for high-throughput background work when a team already
-runs Kafka as its event backbone. It is not a simple drop-in replacement for
-BullMQ because Kafka is a partitioned log, not a job queue.
+runs Kafka as its event backbone. It is not a drop-in for BullMQ because Kafka
+is a partitioned log, not a job queue.
 
 Recommended mapping:
 
@@ -363,35 +108,32 @@ Recommended mapping:
 | metadata | message headers plus value fields |
 | worker pool | consumer group |
 | concurrency | partitions, consumers, and per-consumer execution limits |
-| retry | storage-backed retry topic or delayed scheduler |
+| retry | store-backed retry topic or scheduler |
 | dead letter | dead-letter topic |
-| progress/logs | storage events |
-| schedule | storage scheduler publishing to Kafka |
+| progress/logs | store events |
+| schedule | store scheduler publishing to Kafka |
 
-Kafka design details:
+Design details:
 
 - Topics should usually be per queue, such as `my-app.default` and
   `my-app.email`.
-- Message keys should be chosen deliberately. A run id spreads work evenly;
-  an entity id preserves per-entity ordering.
-- OpenQueue should commit offsets only after the task succeeds or after the
-  retry/failure state has been durably recorded.
-- Long-running jobs require careful max poll interval and heartbeat handling.
+- Message keys should be chosen deliberately: a run id spreads work evenly; an
+  entity id preserves per-entity ordering.
+- Commit offsets only after the task succeeds or after the retry/failure state
+  has been durably recorded.
+- Long-running jobs require careful max-poll-interval and heartbeat handling.
 - Retrying by not committing offsets can block a partition behind one bad
-  message, so OpenQueue should prefer recording retry state, committing the
-  original offset, and republishing later.
-- Kafka has no native per-message delay in the same sense as BullMQ delayed
-  jobs. Use retry topics for coarse delays or storage-backed scheduling for
-  exact delays.
-- Workbench should show consumer group lag and partition assignment when the
+  message, so prefer recording retry state, committing the original offset, and
+  republishing later.
+- Kafka has no native per-message delay like BullMQ delayed jobs. Use retry
+  topics for coarse delays or store-backed scheduling for exact delays.
+- Workbench should show consumer-group lag and partition assignment when the
   client exposes it.
-- Idempotent producers and deterministic run ids should be used for safer
-  publish retries.
+- Use idempotent producers and deterministic run ids for safer publish retries.
 
-Kafka operational caveats:
+Operational caveats:
 
-- Partition count is the hard ceiling for parallelism inside one consumer
-  group.
+- Partition count is the hard ceiling for parallelism inside one consumer group.
 - Ordering and concurrency trade off against each other.
 - Poison messages need dead-letter handling or they can stall progress.
 - Replays are powerful but must not accidentally re-run side-effecting tasks
@@ -399,31 +141,28 @@ Kafka operational caveats:
 - Large payloads should be stored externally, with the message carrying a
   pointer.
 
-## Kafka Share Groups
+### Kafka Share Groups
 
-Kafka Share Groups are an emerging Kafka model that behaves more like a queue:
-multiple consumers can share records without strict partition ownership. This
-is closer to OpenQueue's worker-pool semantics than classic consumer groups.
+Kafka Share Groups are an emerging model that behaves more like a queue:
+multiple consumers can share records without strict partition ownership. This is
+closer to OpenQueue's worker-pool semantics than classic consumer groups.
 
-Potential benefits:
+Potential benefits: better work sharing for queue-like tasks, less
+partition-bound parallelism, more natural acknowledgement semantics, and easier
+scaling for heterogeneous worker fleets.
 
-- Better work sharing for queue-like tasks.
-- Less partition-bound parallelism.
-- More natural acknowledgement semantics for background jobs.
-- Easier scaling for heterogeneous worker fleets.
+Stance:
 
-Roadmap stance:
-
-- Support classic Kafka consumer groups first.
-- Keep the adapter boundary flexible enough for Share Groups later.
+- Support classic consumer groups first.
+- Keep the transport boundary flexible enough for Share Groups later.
 - Treat Share Groups as an optional Kafka mode, not the baseline.
 - Document client and provider maturity before recommending it in production.
 
-## RabbitMQ runtime
+## RabbitMQ
 
-RabbitMQ is a natural fit for background jobs because it already models
-queues, acknowledgements, routing, and prefetch. It is closer to BullMQ than
-Kafka in worker semantics, but still lacks BullMQ's full job-state model.
+RabbitMQ is a natural fit for background jobs because it already models queues,
+acknowledgements, routing, and prefetch. It is closer to BullMQ than Kafka in
+worker semantics, but still lacks BullMQ's full job-state model.
 
 Recommended mapping:
 
@@ -436,193 +175,147 @@ Recommended mapping:
 | payload | message body |
 | metadata | message headers |
 | worker concurrency | consumer prefetch and local execution limit |
-| retry | delayed exchange, TTL/DLX, or storage scheduler |
+| retry | delayed exchange, DLX, or store scheduler |
 | dead letter | DLX and dead-letter queue |
-| progress/logs | storage events |
-| schedule | storage scheduler publishing to exchange |
+| progress/logs | store events |
+| schedule | store scheduler publishing to exchange |
 
-RabbitMQ design details:
+Design details:
 
-- Use durable exchanges and durable queues for production.
-- Use persistent messages for jobs that must survive broker restarts.
-- Use publisher confirms for enqueue success.
-- Use manual acknowledgements, not auto-ack.
-- Set prefetch to match worker concurrency.
-- Ack only after task success or after retry/failure state is durable.
+- Use durable exchanges and durable queues in production, and persistent
+  messages for jobs that must survive a broker restart.
+- Use publisher confirms for enqueue success, and manual acknowledgements
+  (never auto-ack).
+- Set prefetch to match worker concurrency, and ack only after task success or
+  after retry/failure state is durable.
 - Reject or dead-letter poison messages intentionally; do not requeue forever.
 - Use quorum queues for stronger durability where appropriate.
-- Keep long delays in storage unless the deployment intentionally uses a
+- Keep long delays in the store unless the deployment intentionally uses a
   delayed-message strategy.
 
-RabbitMQ routing options:
+Routing options: a direct exchange for simple `queue.task` keys; a topic
+exchange to route by queue, task id, tenant, or priority class; a separate queue
+per OpenQueue queue for the easiest Workbench and scaling model; priority queues
+as an explicit opt-in, since they affect broker behavior.
 
-- Direct exchange: simple `queue.task` routing keys.
-- Topic exchange: route by queue, task id, tenant, or priority class.
-- Separate queues per OpenQueue queue: easiest Workbench and scaling model.
-- Priority queues: possible, but should be an explicit feature because they
-  affect broker behavior and resource usage.
-
-RabbitMQ retry options:
+Retry options:
 
 | Strategy | Use case | Tradeoff |
 | --- | --- | --- |
-| Storage-backed retry scheduler | Default portable behavior. | Requires Postgres-backed runtime state. |
-| TTL plus dead-letter exchange | Simple broker-native retry lanes. | Coarse delays and more queue topology. |
+| Store-backed retry scheduler | Default portable behavior. | Requires a store-backed world. |
+| Message expiry plus dead-letter exchange | Simple broker-native retry lanes. | Coarse delays and more queue topology. |
 | Delayed-message exchange | Convenient per-message delay. | Plugin availability and operational support vary. |
-| Immediate requeue | Very short transient failure. | Can hot-loop and starve other work. |
+| Immediate requeue | Very short transient failures. | Can hot-loop and starve other work. |
 
-## BullMQ adapter
+## Retry and delay across transports
 
-BullMQ should remain the default adapter and the compatibility reference
-implementation.
+Attempts and exponential backoff are already transport-neutral. What varies is
+delivery: a broker-native mechanism is fine for short delays, but long or
+important delays are safer store-backed:
 
-Initial adapter responsibilities:
+1. The worker records a retry event and the next attempt time.
+2. The worker acks or rejects the broker message per the transport's semantics.
+3. A scheduler scans due retries from the store.
+4. The scheduler republishes a new message for the same run.
+5. The worker receives the retry and continues with incremented attempt state.
 
-- preserve current `redis` config behavior
-- keep current delayed jobs, retries, logs, progress, schedules, and flows
-- implement the new runtime contract
-- expose BullMQ inspection capabilities to Workbench
-- keep the same job ids and queue naming where possible
+The store-backed path keeps retry behavior consistent even when transports
+differ, and it is the default for transports without native delay.
 
-This lets the adapter architecture land without forcing existing users to
-migrate broker behavior immediately.
+## Transactional outbox
 
-## Configuration shape
-
-The long-term config should separate runtime and storage:
+Transports should support an outbox so application state and enqueueing don't
+drift:
 
 ```ts
-export default defineConfig({
-  namespace: 'my-app',
-  dirs: ['./worker'],
-  runtime: rabbitmqRuntime({
-    url: process.env.RABBITMQ_URL!,
-    exchange: 'openqueue',
-  }),
-  storage: postgresAdapter({ db, schema: queueSchema }),
+await db.transaction(async (tx) => {
+  await tx.insert(invoices).values(invoice);
+
+  await queue.outbox(tx).enqueue(sendInvoice, {
+    invoiceId: invoice.id,
+  });
 });
 ```
 
-Runtime-specific packages could be split like this:
+The dispatcher then publishes to the transport and marks the outbox row
+delivered — important for Kafka and RabbitMQ, where a database commit and a
+broker publish are separate systems. Outbox rows need a deterministic id and
+optional `dedupeKey`; dispatch is idempotent; publish confirmation is recorded;
+failed publishes retry with backoff; and Workbench surfaces stuck rows as
+operational errors. Plain enqueue still exists for simple cases, documented as
+at-least-once without transactional coupling.
 
-| Package | Purpose |
-| --- | --- |
-| `@openqueue/sdk` | Main task API, config, and re-exports. |
-| `@openqueue/core` | Runtime-neutral core. |
-| `@openqueue/bullmq` | BullMQ runtime adapter. |
-| `@openqueue/kafka` | Kafka runtime adapter. |
-| `@openqueue/rabbitmq` | RabbitMQ runtime adapter. |
-| `@openqueue/worker` | Worker process and Workbench host. |
-| `@openqueue/workbench` | Dashboard and control plane UI. |
+## Portable flows
 
-The main package can re-export BullMQ by default to keep quickstart simple,
-while advanced runtimes can be installed explicitly.
+`enqueueFlow()` ships today on the BullMQ world's native flow support. Kafka and
+RabbitMQ have no equivalent parent/child job graph, so a portable flow engine
+moves the graph into the store, gated by the transport's `flows` capability.
 
-## Compatibility plan
+Flow state tracks the flow id, node id, task id, queue, payload, parent node,
+dependency node ids, node status, output or error, and timestamps. Execution:
 
-The migration should be staged:
+1. Insert all flow nodes in the store.
+2. Publish only nodes whose dependencies are satisfied.
+3. On node completion, mark it and check dependents.
+4. Publish newly unblocked children through the transport.
+5. On a terminal node failure, mark dependents blocked or failed per the flow
+   policy.
 
-### Phase 1: Runtime boundary
+BullMQ can keep using native flows internally; the long-term goal is the same
+Workbench graph and the same flow state regardless of transport.
 
-- Introduce the `runtime` config option.
-- Implement BullMQ through the new adapter interface.
-- Keep `redis` as a compatibility shortcut.
-- Move BullMQ-specific imports out of core runtime paths where possible.
-- Add capability metadata.
-- Keep Workbench behavior unchanged for BullMQ.
+## Workbench runs from the store
 
-### Phase 2: Storage-backed control plane
+The `/openqueue/v1` control plane shipped, but the dashboard's Runs and Errors
+pages still read BullMQ directly — so on a non-BullMQ world they render empty
+(see [Workbench](/docs/workbench#on-non-bullmq-worlds)). The roadmap item is to
+read runs, logs, progress, and the event timeline from the store through the
+control plane, so every world shows the same run history in the dashboard, not
+just BullMQ.
 
-- Move run inspection, logs, progress, schedules, and alerts toward storage.
-- Add outbox support.
-- Add queue state and runtime health tables.
-- Add storage-backed delayed retry support.
-- Add storage-backed schedule ticks.
-- Make Workbench read through the control plane instead of BullMQ directly.
+## Replay tooling
 
-### Phase 3: Kafka preview
+Store-backed run history makes replay tractable: re-enqueue a run or a filtered
+set from the dashboard or the CLI. Because tasks have side effects, replay must
+be an explicit mode with a loud warning — never an accidental re-run — and
+should record that a run originated from a replay.
 
-- Add Kafka runtime package.
-- Support enqueue, consume, ack-through-offset, failure, retry, and dead
-  letters.
-- Support topic-per-queue topology.
-- Require storage for schedules, flow state, logs, progress, and Workbench
-  history.
-- Add lag and partition metadata to Workbench.
-- Document ordering, partitioning, replay, and poison-message behavior.
+## Conformance
 
-### Phase 4: RabbitMQ preview
+Every world passes the same conformance suite before it ships: enqueue and
+execute a task, validate the payload before publish where possible, preserve
+trace context, record lifecycle events, complete and fail with a serialized
+error, retry with exponential backoff, stop on `NonRetryableError`, honor the
+run timeout, run at the configured concurrency, shut down gracefully, and expose
+queue and run state to the control plane. Schedules and flows are exercised
+according to each transport's declared capabilities.
 
-- Add RabbitMQ runtime package.
-- Support durable queues, publisher confirms, manual ack, prefetch, retry,
-  and dead-lettering.
-- Support direct or topic exchange topology.
-- Use storage-backed long delays and schedules.
-- Add queue depth, consumer count, unacked count, and DLX state to Workbench.
+New transports add a broker-specific suite on top:
 
-### Phase 5: Portable flows and advanced controls
-
-- Implement storage-backed flow execution.
-- Make `enqueueFlow()` portable across adapters that declare flow support.
-- Add broker-neutral cancellation semantics where possible.
-- Add runtime-specific Workbench panels.
-- Add replay tooling with explicit side-effect warnings.
-
-## Testing requirements
-
-Every runtime should pass the same core behavior suite:
-
-- enqueue and execute a task
-- validate payload before publish where possible
-- preserve trace context
-- record lifecycle events
-- complete successfully
-- fail with a serialized error
-- retry with exponential backoff
-- stop retrying on `NonRetryableError`
-- honor timeout and TTL
-- run with configured concurrency
-- support graceful shutdown
-- expose queue and run state to Workbench
-- support schedules according to declared capabilities
-- support flows according to declared capabilities
-
-Runtime-specific test suites should cover broker semantics:
-
-- BullMQ: delayed jobs, job logs, flows, repeatable jobs, pause/resume,
-  job promotion, and cleanup.
-- Kafka: offset commits, partition assignment, consumer group rebalance,
-  idempotent publish, retry topics or storage retries, dead-letter topics,
-  lag reporting, and replay behavior.
-- RabbitMQ: publisher confirms, manual ack, nack/reject behavior, prefetch,
-  durable queue recovery, dead-letter exchange routing, quorum queues, and
-  delay strategy.
+- **Kafka:** offset commits, partition assignment, consumer-group rebalance,
+  idempotent publish, retry topics or store retries, dead-letter topics, lag
+  reporting, and replay behavior.
+- **RabbitMQ:** publisher confirms, manual ack, nack/reject behavior, prefetch,
+  durable-queue recovery, dead-letter routing, quorum queues, and delay strategy.
 
 ## Open questions
 
-- Should non-BullMQ runtimes require Postgres storage, or only require it
-  when enabling schedules, flows, and Workbench history?
-- Should `enqueueFlow()` throw when the runtime lacks flow support, or should
-  storage-backed flows be part of core and always available with storage?
-- Should queue-level pause be a required runtime feature, or should worker
-  pause be enough for Kafka and some managed brokers?
-- Should task priority be portable, or declared runtime-specific?
-- Should the outbox API live on the queue client, storage adapter, or both?
-- Should large payload externalization be a core feature before Kafka support?
+1.0 answered several of the original ones — capability degradation is decided
+(typed errors plus `501 unsupported_capability`), and per-world storage is
+decided (a world owns its own store). Still open:
+
+- Should task priority be portable across transports, or declared
+  transport-specific?
+- Should the outbox API live on the queue client, the store, or both?
+- Should large-payload externalization be a core feature before Kafka support?
 - Should replay be a Workbench feature, a CLI feature, or both?
+- For Share Groups vs classic consumer groups, which becomes the recommended
+  Kafka default once client and provider support matures?
 
-## Current recommendation
+## Where this goes next
 
-Ship the adapter architecture around BullMQ first, then move Workbench and
-schedules onto storage-backed control-plane APIs. After that, Kafka and
-RabbitMQ can be added as preview runtimes without compromising the existing
-BullMQ experience.
-
-Kafka should be the first non-BullMQ backend if the target is high-throughput
-event infrastructure. RabbitMQ should be the first non-BullMQ backend if the
-target is queue semantics that are operationally familiar to teams already
-running AMQP.
-
-In both cases, Postgres-backed storage is the key that makes OpenQueue feel
-like OpenQueue instead of exposing every broker's raw edge cases to task
-authors.
+The worlds architecture is in place. Kafka is the first new transport to target
+if the goal is high-throughput event infrastructure; RabbitMQ is first if the
+goal is queue semantics familiar to teams already running AMQP. In both cases, a
+store-backed world is what keeps OpenQueue feeling like OpenQueue instead of
+exposing every broker's raw edges to task authors.
