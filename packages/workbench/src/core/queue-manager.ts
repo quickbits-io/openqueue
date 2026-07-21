@@ -231,12 +231,19 @@ export class QueueManager {
     this.tagFields = tagFields;
     this.registry = registry;
 
-    // Initialize FlowProducer using connection from first queue
+    // Initialize FlowProducer using the connection AND prefix from the first
+    // queue. The worker's transport namespaces its queues under
+    // `${prefix}:${namespace}`; without the same prefix the FlowProducer would
+    // default to `bull` and read/write a different Redis keyspace than the
+    // queues it's supposed to inspect.
     const firstQueue = queues[0];
     if (firstQueue) {
       const connection = firstQueue.opts?.connection;
       if (connection) {
-        this.flowProducer = new FlowProducer({ connection });
+        this.flowProducer = new FlowProducer({
+          connection,
+          prefix: firstQueue.opts?.prefix,
+        });
       }
     }
   }
