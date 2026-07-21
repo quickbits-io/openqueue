@@ -15,10 +15,15 @@ import type {
 const HEALTH_CHECK_INTERVAL_MS = 30_000;
 const MAX_RECENT_EVENTS = 100;
 const MAX_DELIVERY_RECORDS = 50;
+// Per-job triggers (job_failed/stalled/retries_exhausted) fingerprint by jobId,
+// so the cooldown map would otherwise grow one entry per failed job forever.
+// Cap it and evict expired/oldest entries — an elapsed cooldown can no longer
+// suppress anything, so dropping it is behaviour-preserving.
+const MAX_COOLDOWN_ENTRIES = 10_000;
 
 interface CooldownEntry {
   lastFiredAt: number;
-  event?: AlertEvent;
+  expiresAt: number;
 }
 
 export class AlertManager {
@@ -361,8 +366,9 @@ export class AlertManager {
     const fingerprint = this.buildFingerprint(rule, ctx);
     const cooldownMs =
       rule.cooldownMs ?? this.options.defaults?.cooldownMs ?? 5 * 60 * 1000;
+    const now = Date.now();
     const prev = this.cooldowns.get(fingerprint);
-    if (prev && Date.now() - prev.lastFiredAt < cooldownMs) {
+    if (prev && now - prev.lastFiredAt < cooldownMs) {
       return;
     }
 
@@ -381,12 +387,36 @@ export class AlertManager {
       failedReason: ctx.failedReason,
       attemptsMade: ctx.attemptsMade,
       counts: ctx.counts,
-      firedAt: Date.now(),
+      firedAt: now,
     };
 
-    this.cooldowns.set(fingerprint, { lastFiredAt: Date.now(), event });
+    this.cooldowns.set(fingerprint, {
+      lastFiredAt: now,
+      expiresAt: now + cooldownMs,
+    });
+    this.pruneCooldowns(now);
     this.pushEvent(event);
     await this.deliver(event, rule);
+  }
+
+  /**
+   * Keep {@link cooldowns} bounded. Only sweeps once the map exceeds the cap, so
+   * the common path stays O(1); on overflow it drops expired windows first, then
+   * the oldest entries (Map preserves insertion order) to hold the ceiling.
+   */
+  private pruneCooldowns(now: number): void {
+    if (this.cooldowns.size <= MAX_COOLDOWN_ENTRIES) return;
+    for (const [fingerprint, entry] of this.cooldowns) {
+      if (entry.expiresAt <= now) this.cooldowns.delete(fingerprint);
+    }
+    if (this.cooldowns.size <= MAX_COOLDOWN_ENTRIES) return;
+    const excess = this.cooldowns.size - MAX_COOLDOWN_ENTRIES;
+    let removed = 0;
+    for (const fingerprint of this.cooldowns.keys()) {
+      if (removed >= excess) break;
+      this.cooldowns.delete(fingerprint);
+      removed += 1;
+    }
   }
 
   private async deliver(event: AlertEvent, rule: AlertRule): Promise<void> {
