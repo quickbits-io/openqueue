@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/quickbits-io/openqueue/compare/world-bullmq-v1.1.0...world-bullmq-v1.2.0) (2026-07-22)
+
+
+### Features
+
+* **core:** retention policy for run history, events, and spans ([86fee4d](https://github.com/quickbits-io/openqueue/commit/86fee4ddcb12b3a51a5b9c2c6d749cf0bb3bc859))
+
 ## [1.1.0](https://github.com/quickbits-io/openqueue/compare/world-bullmq-v1.0.0...world-bullmq-v1.1.0) (2026-07-21)
 
 

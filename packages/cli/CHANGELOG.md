@@ -1,5 +1,12 @@
 # @openqueue/cli
 
+## [1.2.0](https://github.com/quickbits-io/openqueue/compare/cli-v1.1.0...cli-v1.2.0) (2026-07-22)
+
+
+### Miscellaneous Chores
+
+* **cli:** Synchronize openqueue versions
+
 ## [1.1.0](https://github.com/quickbits-io/openqueue/compare/cli-v1.0.0...cli-v1.1.0) (2026-07-21)
 
 
