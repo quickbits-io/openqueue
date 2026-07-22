@@ -74,8 +74,16 @@ export {
   traceCarrierKey,
 } from './otel-hooks';
 export { InvalidScheduleError, UnknownTaskError } from './request-errors';
-export type { RetentionConfig, RetentionPolicy } from './retention';
-export { resolveRetentionPolicy, retentionCutoffs } from './retention';
+export type {
+  RetentionConfig,
+  RetentionPolicy,
+  RetentionSweeper,
+} from './retention';
+export {
+  createRetentionSweeper,
+  resolveRetentionPolicy,
+  retentionCutoffs,
+} from './retention';
 export { isTerminalRunStatus } from './runs';
 export type {
   CreateQueueWorkerOptions,

@@ -69,6 +69,19 @@ describe('validateConfig backend (world XOR redis)', () => {
   });
 });
 
+describe('validateConfig retention', () => {
+  it('rejects a non-positive retention window before boot', async () => {
+    await expect(
+      startWorkerApp({
+        namespace: 'test',
+        world: worldLocal(),
+        tasks: { module: './noop' },
+        retention: { completed: 0 },
+      }),
+    ).rejects.toThrow(/retention\.completed must be a positive number/);
+  });
+});
+
 describe('validateConfig accepts a world-only config', () => {
   const noop = task({
     id: 'config-validation-noop',

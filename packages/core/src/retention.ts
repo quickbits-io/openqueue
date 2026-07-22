@@ -1,4 +1,4 @@
-import type { RetentionCutoffs } from './types';
+import type { QueueRunStore, RetentionCutoffs } from './types';
 
 /**
  * Age-based pruning of durable run history. Each window counts from the run's
@@ -60,4 +60,55 @@ export function retentionCutoffs(
 
 function cutoff(days: number | false, now: Date): Date | undefined {
   return days === false ? undefined : new Date(now.getTime() - days * DAY_MS);
+}
+
+export interface RetentionSweeper {
+  /** Idempotent; clears the initial and hourly timers. */
+  close(): void;
+}
+
+const INITIAL_SWEEP_DELAY_MS = 60 * 1000;
+const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * Hourly retention sweep over the store's optional `prune`, plus one initial
+ * sweep shortly after boot. No-op (no timers) when the store can't prune or
+ * every retention field is `false`. Timers are unref'd so they never hold the
+ * process open; a failed sweep is logged and the cadence continues.
+ */
+export function createRetentionSweeper(
+  store: QueueRunStore,
+  policy: RetentionPolicy,
+): RetentionSweeper {
+  const prune = store.prune?.bind(store);
+  const disabled =
+    policy.completed === false &&
+    policy.failed === false &&
+    policy.logs === false;
+  if (!prune || disabled) return { close: () => {} };
+
+  const sweep = async () => {
+    try {
+      const { runs, events, spans } = await prune(retentionCutoffs(policy));
+      if (runs > 0 || events > 0 || spans > 0) {
+        console.log(
+          `[openqueue] retention: pruned ${runs} runs, ${events} events, ${spans} spans`,
+        );
+      }
+    } catch (err) {
+      console.error('[openqueue] retention sweep failed', err);
+    }
+  };
+
+  const initial = setTimeout(() => void sweep(), INITIAL_SWEEP_DELAY_MS);
+  const interval = setInterval(() => void sweep(), SWEEP_INTERVAL_MS);
+  initial.unref?.();
+  interval.unref?.();
+
+  return {
+    close: () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    },
+  };
 }
