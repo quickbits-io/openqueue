@@ -39,6 +39,13 @@ describe.skipIf(!url)('bullmq transport.close resilience (real redis)', () => {
       onFailed: () => undefined,
       onError: () => undefined,
     });
+    // Let the worker's blocking connection finish initializing before closing.
+    // Closing mid-init flushes its in-flight version-check INFO after
+    // RedisConnection.close() has already removed the connection's error
+    // forwarder; the constructor's `initializing.catch(err => emit('error'))`
+    // then throws on the listener-less emitter, leaking an unhandled
+    // 'Connection is closed.' rejection (flaky on slow CI runners).
+    await worker.waitUntilReady();
 
     // Touch the queue so it lands in the transport's queue map.
     await transport.enqueue(queueName, { id: 'j1', name: 'work', data: {} });

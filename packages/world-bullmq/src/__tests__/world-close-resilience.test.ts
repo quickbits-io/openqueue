@@ -47,6 +47,10 @@ describe.skipIf(!url)('worldBullmq close resilience (real redis)', () => {
         onError: () => undefined,
       });
       expect(owned).toBeDefined();
+      // Let the worker's blocking connection finish initializing before
+      // closing — closing mid-init leaks an unhandled 'Connection is closed.'
+      // rejection (see transport-close-resilience for the full mechanism).
+      await consumer.worker.waitUntilReady();
 
       // Drain the worker for real (so no Redis handle dangles into teardown as
       // an unhandled rejection) but report the close as rejected, exercising
