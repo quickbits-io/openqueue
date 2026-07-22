@@ -1,6 +1,7 @@
 import {
   and,
   asc,
+  type Column,
   desc,
   eq,
   gte,
@@ -17,6 +18,7 @@ import {
   index,
   integer,
   jsonb,
+  type PgTable,
   pgSchema,
   text,
   timestamp,
@@ -66,8 +68,10 @@ interface DbQuery<T> extends PromiseLike<T> {
 
 interface Transaction {
   delete(table: unknown): DbQuery<unknown[]>;
+  execute(query: unknown): Promise<unknown>;
   insert(table: unknown): DbQuery<unknown[]>;
   select(value?: unknown): DbQuery<unknown[]>;
+  transaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T>;
   update(table: unknown): DbQuery<unknown[]>;
 }
 
@@ -1158,37 +1162,96 @@ function runFilters(
   return filters;
 }
 
+/**
+ * Transaction-scoped advisory lock serializing the retention prune across
+ * worker replicas sharing a database. Advisory-key registry for the OpenQueue
+ * stack ("oq" + a counter — add new keys here):
+ *
+ *  - `0x6f710001` — `@openqueue/world-postgres` migration runner
+ *    (`MIGRATION_LOCK_KEY` in its `migrate.ts`).
+ *  - `0x6f710002` — retention prune (this key).
+ */
+export const RETENTION_PRUNE_LOCK_KEY = 0x6f710002;
+
+/** Rows per DELETE batch — keeps every statement short (statement_timeout-safe). */
+const PRUNE_BATCH_ROWS = 5000;
+/**
+ * Batches per category per sweep (≈200k rows each) — bounds the first sweep
+ * over a huge backlog; the hourly cadence drains the remainder incrementally.
+ */
+const PRUNE_MAX_BATCHES = 40;
+
 async function pruneRuns(
   db: Transaction,
   schema: QueueDrizzleSchema,
   cutoffs: RetentionCutoffs,
 ): Promise<PruneResult> {
-  const doomed = prunableRunFilter(schema, cutoffs);
-  // Events and spans go first so the doomed-runs subquery still matches — their
-  // deletions are counted here instead of vanishing behind the FK cascade.
-  const events = await pruneRunAttachments(
-    db,
-    schema,
-    schema.queueRunEvents,
-    doomed,
-    cutoffs.logsBefore,
+  // One transaction per sweep: the xact-scoped advisory lock (safe over a
+  // pooled db, unlike session locks whose unlock may land on another
+  // connection) needs it to span the work, and the batch cap bounds its
+  // duration. Batching still keeps each statement short.
+  return db.transaction(async (tx): Promise<PruneResult> => {
+    if (!(await tryPruneLock(tx))) return { skipped: true };
+    const doomed = prunableRunFilter(schema, cutoffs);
+    // Events and spans go first so the doomed-runs subquery still matches —
+    // their deletions are counted here instead of vanishing behind the FK
+    // cascade. (When a category caps out mid-backlog, the run delete may
+    // still cascade some stragglers uncounted — boundedness wins.)
+    const events = await pruneRunAttachments(
+      tx,
+      schema,
+      schema.queueRunEvents,
+      doomed,
+      cutoffs.logsBefore,
+    );
+    const spans = await pruneRunAttachments(
+      tx,
+      schema,
+      schema.queueRunSpans,
+      doomed,
+      cutoffs.logsBefore,
+    );
+    const runs = doomed
+      ? await batchedDelete(tx, schema.queueRuns, schema.queueRuns.id, doomed)
+      : 0;
+    return { runs, events, spans };
+  });
+}
+
+async function tryPruneLock(tx: Transaction): Promise<boolean> {
+  const result = await tx.execute(
+    sql`select pg_try_advisory_xact_lock(${RETENTION_PRUNE_LOCK_KEY}::bigint) as locked`,
   );
-  const spans = await pruneRunAttachments(
-    db,
-    schema,
-    schema.queueRunSpans,
-    doomed,
-    cutoffs.logsBefore,
-  );
-  let runs = 0;
-  if (doomed) {
+  // postgres-js returns the rows array directly; node-postgres wraps it in `rows`.
+  const rows = Array.isArray(result)
+    ? result
+    : ((result as { rows?: unknown[] }).rows ?? []);
+  const row = rows[0] as { locked?: unknown } | undefined;
+  return row?.locked === true;
+}
+
+/**
+ * Delete matching rows in {@link PRUNE_BATCH_ROWS}-sized batches, up to
+ * {@link PRUNE_MAX_BATCHES} per call. Returns the number of rows deleted.
+ */
+async function batchedDelete(
+  db: Transaction,
+  table: PgTable,
+  id: Column,
+  filter: SQL,
+): Promise<number> {
+  let total = 0;
+  for (let batch = 0; batch < PRUNE_MAX_BATCHES; batch++) {
     const rows = (await db
-      .delete(schema.queueRuns)
-      .where(doomed)
-      .returning({ id: schema.queueRuns.id })) as Array<{ id: string }>;
-    runs = rows.length;
+      .delete(table)
+      .where(
+        sql`${id} in (select ${id} from ${table} where ${filter} limit ${PRUNE_BATCH_ROWS})`,
+      )
+      .returning({ id })) as unknown[];
+    total += rows.length;
+    if (rows.length < PRUNE_BATCH_ROWS) break;
   }
-  return { runs, events, spans };
+  return total;
 }
 
 /**
@@ -1243,12 +1306,9 @@ async function pruneRunAttachments(
       sql`${table.runId} in (select ${schema.queueRuns.id} from ${schema.queueRuns} where ${doomedRuns})`,
     );
   }
-  if (filters.length === 0) return 0;
-  const rows = (await db
-    .delete(table)
-    .where(or(...filters))
-    .returning({ id: table.id })) as Array<{ id: string }>;
-  return rows.length;
+  const filter = or(...filters);
+  if (!filter) return 0;
+  return batchedDelete(db, table, table.id, filter);
 }
 
 async function persistRun(

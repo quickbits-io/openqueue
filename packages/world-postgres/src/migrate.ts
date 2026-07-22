@@ -7,7 +7,9 @@ import type postgres from 'postgres';
 /**
  * Session-level advisory lock that serializes migration runners across every
  * worker sharing a database. The literal spells "oq" + a version nibble; it is
- * frozen — changing it would let two fleets migrate concurrently.
+ * frozen — changing it would let two fleets migrate concurrently. Part of the
+ * OpenQueue advisory-key registry kept at `RETENTION_PRUNE_LOCK_KEY` in
+ * `@openqueue/core/drizzle`.
  */
 export const MIGRATION_LOCK_KEY = 0x6f710001;
 

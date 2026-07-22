@@ -89,7 +89,10 @@ export function createRetentionSweeper(
 
   const sweep = async () => {
     try {
-      const { runs, events, spans } = await prune(retentionCutoffs(policy));
+      const result = await prune(retentionCutoffs(policy));
+      // Another replica holds the store's prune lock — its sweep does the work.
+      if (result.skipped) return;
+      const { runs, events, spans } = result;
       if (runs > 0 || events > 0 || spans > 0) {
         console.log(
           `[openqueue] retention: pruned ${runs} runs, ${events} events, ${spans} spans`,

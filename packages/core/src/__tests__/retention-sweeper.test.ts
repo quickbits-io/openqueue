@@ -106,6 +106,20 @@ describe('createRetentionSweeper', () => {
     sweeper.close();
   });
 
+  it('stays silent on a skipped prune (another replica holds the lock)', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { store, calls } = pruningStore([{ skipped: true }]);
+    const sweeper = createRetentionSweeper(store, resolveRetentionPolicy());
+
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    expect(calls).toHaveLength(1);
+    expect(log).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+
+    sweeper.close();
+  });
+
   it('logs the pruned line only when something was deleted', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { store } = pruningStore([zeroes, { runs: 2, events: 4, spans: 3 }]);

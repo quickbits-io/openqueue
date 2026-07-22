@@ -1,4 +1,7 @@
-import { postgresAdapter } from '@openqueue/core/drizzle';
+import {
+  postgresAdapter,
+  RETENTION_PRUNE_LOCK_KEY,
+} from '@openqueue/core/drizzle';
 import type {
   QueueRunSnapshot,
   QueueStorage,
@@ -159,5 +162,76 @@ describe.runIf(hasDb)('postgresAdapter retention prune', () => {
 
     const runs = await db.select({ id: queueRuns.id }).from(queueRuns);
     expect(runs).toHaveLength(3);
+  });
+});
+
+describe.runIf(hasDb)('postgresAdapter retention prune — coordination', () => {
+  const sql = testClient();
+  const store = postgresAdapter({ db: drizzle(sql), schema: queueSchema });
+
+  beforeAll(async () => {
+    await resetSchema(sql);
+  });
+
+  afterAll(async () => {
+    await sql.end();
+  });
+
+  it('reports skipped while another session holds the prune lock, then works', async () => {
+    await sql.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(${RETENTION_PRUNE_LOCK_KEY}::bigint)`;
+      await expect(
+        store.runs.prune?.({ logsBefore: daysAgo(30) }),
+      ).resolves.toEqual({ skipped: true });
+    });
+
+    // The competitor's transaction released the lock — the next sweep works.
+    await expect(
+      store.runs.prune?.({ logsBefore: daysAgo(30) }),
+    ).resolves.toEqual({ runs: 0, events: 0, spans: 0 });
+  });
+});
+
+describe.runIf(hasDb)('postgresAdapter retention prune — batching cap', () => {
+  const sql = testClient();
+  const store = postgresAdapter({ db: drizzle(sql), schema: queueSchema });
+  // 40 batches × 5000 rows per category per sweep.
+  const SWEEP_CAP = 200_000;
+  const EXTRA = 50;
+
+  beforeAll(async () => {
+    await resetSchema(sql);
+    // Parent run for the FK; young enough to survive the sweep. Its own
+    // lifecycle event is young too, so only the seeded backlog is prunable.
+    await store.handle({
+      type: 'complete',
+      run: snapshot('bulk-run', 'completed', 1),
+    });
+    await sql.unsafe(`
+      insert into "openqueue"."run_events" (id, run_id, type, data, created_at)
+      select 'bulk-' || g, 'bulk-run', 'progress', '{}'::jsonb,
+             now() - interval '40 days'
+      from generate_series(1, ${SWEEP_CAP + EXTRA}) g
+    `);
+  }, 60_000);
+
+  afterAll(async () => {
+    await sql.end();
+  });
+
+  it('caps one sweep at the batch budget and drains the rest on the next', {
+    timeout: 120_000,
+  }, async () => {
+    const first = await store.runs.prune?.({ logsBefore: daysAgo(30) });
+    expect(first).toEqual({ runs: 0, events: SWEEP_CAP, spans: 0 });
+
+    const second = await store.runs.prune?.({ logsBefore: daysAgo(30) });
+    expect(second).toEqual({ runs: 0, events: EXTRA, spans: 0 });
+
+    const [row] = await sql<
+      { count: number }[]
+    >`select count(*)::int as count from "openqueue"."run_events"`;
+    // Only bulk-run's young lifecycle event survives.
+    expect(row?.count).toBe(1);
   });
 });

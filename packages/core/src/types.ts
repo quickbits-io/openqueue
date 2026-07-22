@@ -402,11 +402,14 @@ export interface RetentionCutoffs {
   logsBefore?: Date;
 }
 
-export interface PruneResult {
-  runs: number;
-  events: number;
-  spans: number;
-}
+/**
+ * Outcome of a store prune: the deletion counts, or `skipped: true` when
+ * another replica held the store's prune coordination lock and this call did
+ * nothing. Stores without cross-replica coordination always return counts.
+ */
+export type PruneResult =
+  | { skipped?: false; runs: number; events: number; spans: number }
+  | { skipped: true };
 
 export interface QueueRunStore {
   list(options?: QueueRunListOptions): Promise<QueueRunListResult>;
