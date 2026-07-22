@@ -200,6 +200,19 @@ logged when anything was deleted. The sweep runs through the store's
 optional `prune` capability, so custom stores without it are left
 untouched.
 
+The sweep is built for production backlogs: deletes run in bounded
+batches (up to ~200k rows per category per sweep), so a first sweep over
+millions of rows stays cheap and the hourly cadence drains the rest
+incrementally. Replicas sharing a database coordinate through a Postgres
+advisory lock — exactly one prunes per sweep — and the timers carry ±10%
+jitter so a fleet doesn't fire in lockstep.
+
+The worker app wires the sweep up for you. **Embedded runtimes don't get
+it automatically**: if you boot `createQueueWorker(...)` yourself, pass
+`retention` in its options to opt in — without it, no retention runs.
+`createRetentionSweeper(runtime.runs, resolveRetentionPolicy({ ... }))`
+is the manual escape hatch when you need to own the cadence.
+
 This is separate from BullMQ's delivery-layer retention
 (`removeOnComplete`/`removeOnFail`, 7/30 days), which already trimmed
 finished jobs out of Redis — that bounds live queue state, while
