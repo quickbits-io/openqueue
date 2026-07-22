@@ -70,11 +70,19 @@ export interface RetentionSweeper {
 const INITIAL_SWEEP_DELAY_MS = 60 * 1000;
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
+/** ±10% so co-deployed replicas don't fire synchronized sweeps. */
+function jittered(ms: number): number {
+  return Math.round(ms * (0.9 + Math.random() * 0.2));
+}
+
 /**
- * Hourly retention sweep over the store's optional `prune`, plus one initial
- * sweep shortly after boot. No-op (no timers) when the store can't prune or
- * every retention field is `false`. Timers are unref'd so they never hold the
- * process open; a failed sweep is logged and the cadence continues.
+ * Hourly (±10% jitter) retention sweep over the store's optional `prune`,
+ * plus one initial sweep ~60s after boot. The worker app wires this up from
+ * `config.retention`; embedded runtimes get it by passing `retention` to
+ * `createQueueWorker`, or call this directly as the escape hatch. No-op (no
+ * timers) when the store can't prune or every retention field is `false`.
+ * Timers are unref'd so they never hold the process open; a failed sweep is
+ * logged and the cadence continues.
  */
 export function createRetentionSweeper(
   store: QueueRunStore,
@@ -103,8 +111,11 @@ export function createRetentionSweeper(
     }
   };
 
-  const initial = setTimeout(() => void sweep(), INITIAL_SWEEP_DELAY_MS);
-  const interval = setInterval(() => void sweep(), SWEEP_INTERVAL_MS);
+  const initial = setTimeout(
+    () => void sweep(),
+    jittered(INITIAL_SWEEP_DELAY_MS),
+  );
+  const interval = setInterval(() => void sweep(), jittered(SWEEP_INTERVAL_MS));
   initial.unref?.();
   interval.unref?.();
 

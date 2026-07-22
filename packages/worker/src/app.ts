@@ -3,7 +3,6 @@ import { pathToFileURL } from 'node:url';
 import {
   consoleDrain,
   createQueueWorker,
-  createRetentionSweeper,
   defineQueueTasks,
   getRegisteredTasks,
   loadQueueTasks,
@@ -63,7 +62,10 @@ export async function createWorkerApp(
   options: CreateWorkerAppOptions = {},
 ): Promise<WorkerAppHandle> {
   const world = validateConfig(config, options.tasks !== undefined);
-  // Validated here so a bad retention window fails the boot, not the first sweep.
+  // Resolved (and validated) here so a bad retention window fails before task
+  // loading and world boot. The runtime owns the sweep and only runs it when
+  // the option is set — passing the resolved policy keeps the worker's
+  // default-on behavior.
   const retention = resolveRetentionPolicy(config.retention);
   const cwd = options.cwd ?? configDirs.get(config) ?? process.cwd();
   const tasks = options.tasks ?? (await resolveTasks(config, cwd));
@@ -73,10 +75,10 @@ export async function createWorkerApp(
     world,
     tasks,
     drains,
+    retention,
     globalConcurrency: config.concurrency?.global,
     queueConcurrency: config.concurrency?.queues,
   });
-  const retentionSweeper = createRetentionSweeper(runtime.runs, retention);
   const queues = bullmqQueues(runtime);
   const queueNames = queues.map((queue) => queue.name).sort();
   const state = { ready: true };
@@ -134,7 +136,6 @@ export async function createWorkerApp(
     if (closed) return;
     closed = true;
     state.ready = false;
-    retentionSweeper.close();
     // The workbench started its own alert-manager interval + QueueEvents
     // listeners; the runtime doesn't own them, so tear it down here or the event
     // loop never drains. Workbench teardown is best-effort; a failed runtime

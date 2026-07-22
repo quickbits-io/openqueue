@@ -30,6 +30,8 @@ const zeroes: PruneResult = { runs: 0, events: 0, spans: 0 };
 describe('createRetentionSweeper', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // Pin the ±10% jitter to its midpoint (factor 1.0) so timings are exact.
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
   });
 
   afterEach(() => {
@@ -56,6 +58,34 @@ describe('createRetentionSweeper', () => {
     expect(calls[0]?.logsBefore).toBeInstanceOf(Date);
 
     sweeper.close();
+  });
+
+  it('jitters the initial delay and interval by ±10%', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const early = pruningStore([zeroes]);
+    const earlySweeper = createRetentionSweeper(
+      early.store,
+      resolveRetentionPolicy(),
+    );
+    await vi.advanceTimersByTimeAsync(54_000 - 1); // 0.9 × 60s
+    expect(early.calls).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(early.calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(3_240_000); // 0.9 × 1h
+    expect(early.calls).toHaveLength(2);
+    earlySweeper.close();
+
+    vi.spyOn(Math, 'random').mockReturnValue(1);
+    const late = pruningStore([zeroes]);
+    const lateSweeper = createRetentionSweeper(
+      late.store,
+      resolveRetentionPolicy(),
+    );
+    await vi.advanceTimersByTimeAsync(66_000 - 1); // 1.1 × 60s
+    expect(late.calls).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(late.calls).toHaveLength(1);
+    lateSweeper.close();
   });
 
   it('close clears both timers', async () => {

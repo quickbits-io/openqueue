@@ -3,6 +3,11 @@ import { composeWorldRuntime } from './control-compose';
 import { loadQueueTasks, type QueueTaskDiscovery } from './discovery';
 import { configureEnqueueTransport } from './enqueue';
 import { type NamespaceOptions, resolveNamespace } from './namespace';
+import {
+  createRetentionSweeper,
+  type RetentionConfig,
+  resolveRetentionPolicy,
+} from './retention';
 import { type QueueScheduleController, scheduleTickJob } from './schedules';
 import { attachSpanStore } from './span-export';
 import { bindQueueRuntime } from './task';
@@ -25,6 +30,12 @@ export interface CreateQueueWorkerOptions extends NamespaceOptions {
   world: WorldFactory;
   tasks: QueueTaskDiscovery | TaskDefinition[];
   drains?: QueueDrain[];
+  /**
+   * Run the hourly retention sweep over the world's store (see
+   * {@link RetentionConfig}). Unset = no sweep — embedded runtimes opt in
+   * explicitly; the worker app always passes its resolved policy.
+   */
+  retention?: RetentionConfig;
   globalConcurrency?: number;
   queueConcurrency?: QueueConcurrency;
 }
@@ -52,6 +63,8 @@ export interface QueueWorkerRuntime {
 export interface WorkerFromWorldOptions extends NamespaceOptions {
   tasks: TaskDefinition[];
   drains?: Array<QueueDrain | false | null | undefined>;
+  /** See {@link CreateQueueWorkerOptions.retention}. */
+  retention?: RetentionConfig;
   /** Ownership cleanup (e.g. a caller-owned Redis connection) run last. */
   onClose?: () => Promise<void>;
   globalConcurrency?: number;
@@ -69,6 +82,7 @@ export async function createQueueWorker(
   return createQueueWorkerFromWorld(world, {
     drains: options.drains,
     tasks,
+    retention: options.retention,
     globalConcurrency: options.globalConcurrency,
     queueConcurrency: options.queueConcurrency,
     ...namespace,
@@ -97,6 +111,9 @@ export async function createQueueWorkerFromWorld(
     await store.publish(catalog);
 
     const { trigger, schedules, runs } = parts;
+    const retentionSweeper = options.retention
+      ? createRetentionSweeper(runs, resolveRetentionPolicy(options.retention))
+      : undefined;
     bindQueueRuntime({ trigger, schedules });
     await syncDeclarativeSchedules(tasks, schedules);
 
@@ -127,6 +144,7 @@ export async function createQueueWorkerFromWorld(
       spans: store.spans,
       alerts: store.alerts,
       close: async () => {
+        retentionSweeper?.close();
         // Close every consumer even if one rejects, then always close the
         // world. A consumer whose close fails (BullMQ or a custom transport
         // against an already-failing backend) must not strand the world's
