@@ -4,8 +4,11 @@ import {
   desc,
   eq,
   gte,
+  inArray,
+  lt,
   lte,
   notInArray,
+  or,
   type SQL,
   sql,
 } from 'drizzle-orm';
@@ -19,7 +22,11 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { TERMINAL_RUN_STATUSES } from './store/filter';
+import {
+  COMPLETED_RETENTION_STATUSES,
+  FAILED_RETENTION_STATUSES,
+  TERMINAL_RUN_STATUSES,
+} from './store/filter';
 import type {
   AlertContactPoint,
   AlertContactPointPreset,
@@ -29,6 +36,7 @@ import type {
   AlertTrigger,
   BackoffOptions,
   EnqueueMeta,
+  PruneResult,
   QueueCatalogEntry,
   QueueRun,
   QueueRunListOptions,
@@ -39,6 +47,7 @@ import type {
   QueueScheduleListOptions,
   QueueScheduleUpdateInput,
   QueueStorage,
+  RetentionCutoffs,
   RunStatus,
   SerializedError,
 } from './types';
@@ -602,6 +611,7 @@ export function postgresAdapter(options: PostgresAdapterOptions): QueueStorage {
 
     runs: {
       list: (options) => listRuns(db, schema, options),
+      prune: (cutoffs) => pruneRuns(db, schema, cutoffs),
     },
 
     spans: {
@@ -1146,6 +1156,99 @@ function runFilters(
     );
   }
   return filters;
+}
+
+async function pruneRuns(
+  db: Transaction,
+  schema: QueueDrizzleSchema,
+  cutoffs: RetentionCutoffs,
+): Promise<PruneResult> {
+  const doomed = prunableRunFilter(schema, cutoffs);
+  // Events and spans go first so the doomed-runs subquery still matches — their
+  // deletions are counted here instead of vanishing behind the FK cascade.
+  const events = await pruneRunAttachments(
+    db,
+    schema,
+    schema.queueRunEvents,
+    doomed,
+    cutoffs.logsBefore,
+  );
+  const spans = await pruneRunAttachments(
+    db,
+    schema,
+    schema.queueRunSpans,
+    doomed,
+    cutoffs.logsBefore,
+  );
+  let runs = 0;
+  if (doomed) {
+    const rows = (await db
+      .delete(schema.queueRuns)
+      .where(doomed)
+      .returning({ id: schema.queueRuns.id })) as Array<{ id: string }>;
+    runs = rows.length;
+  }
+  return { runs, events, spans };
+}
+
+/**
+ * Terminal runs past their bucket's cutoff, by finish time (falling back to
+ * the last update for terminal rows that never recorded one). Non-terminal
+ * runs never match.
+ */
+function prunableRunFilter(
+  schema: QueueDrizzleSchema,
+  cutoffs: RetentionCutoffs,
+): SQL | undefined {
+  const filters: SQL[] = [];
+  if (cutoffs.completedBefore) {
+    filters.push(
+      runBucketFilter(
+        schema,
+        COMPLETED_RETENTION_STATUSES,
+        cutoffs.completedBefore,
+      ),
+    );
+  }
+  if (cutoffs.failedBefore) {
+    filters.push(
+      runBucketFilter(schema, FAILED_RETENTION_STATUSES, cutoffs.failedBefore),
+    );
+  }
+  if (filters.length === 0) return undefined;
+  return or(...filters);
+}
+
+function runBucketFilter(
+  schema: QueueDrizzleSchema,
+  statuses: readonly RunStatus[],
+  before: Date,
+): SQL {
+  return sql`${inArray(schema.queueRuns.status, [...statuses])} and coalesce(${schema.queueRuns.finishedAt}, ${schema.queueRuns.updatedAt}) < ${before.toISOString()}`;
+}
+
+async function pruneRunAttachments(
+  db: Transaction,
+  schema: QueueDrizzleSchema,
+  table:
+    | QueueDrizzleSchema['queueRunEvents']
+    | QueueDrizzleSchema['queueRunSpans'],
+  doomedRuns: SQL | undefined,
+  logsBefore: Date | undefined,
+): Promise<number> {
+  const filters: SQL[] = [];
+  if (logsBefore) filters.push(lt(table.createdAt, logsBefore.toISOString()));
+  if (doomedRuns) {
+    filters.push(
+      sql`${table.runId} in (select ${schema.queueRuns.id} from ${schema.queueRuns} where ${doomedRuns})`,
+    );
+  }
+  if (filters.length === 0) return 0;
+  const rows = (await db
+    .delete(table)
+    .where(or(...filters))
+    .returning({ id: table.id })) as Array<{ id: string }>;
+  return rows.length;
 }
 
 async function persistRun(

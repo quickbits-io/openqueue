@@ -21,6 +21,7 @@ export function createRunsApi(
 ): QueueRunsApi {
   const runs: QueueRunsApi = {
     list: (options) => store.list(options),
+    ...(store.prune ? { prune: store.prune.bind(store) } : {}),
     retrieve: async (id) => {
       const result = await store.list({ id, limit: 1 });
       return result.data[0];

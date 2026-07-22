@@ -3,6 +3,7 @@ import type {
   AlertContactPoint,
   AlertRule,
   AlertStore,
+  PruneResult,
   QueueRun,
   QueueSchedule,
   QueueScheduleCreateInput,
@@ -11,6 +12,7 @@ import type {
   QueueScheduleUpdateInput,
   QueueState,
   QueueStorage,
+  RetentionCutoffs,
   SerializedError,
 } from '@openqueue/core/types';
 import {
@@ -18,6 +20,7 @@ import {
   filterSchedules,
   isTerminalRunStatus,
   runFromSnapshot,
+  shouldPruneRun,
 } from '@openqueue/core/world';
 import type { Redis } from 'ioredis';
 
@@ -306,7 +309,22 @@ function redisRunStore(
   durable?: QueueStorage['runs'],
   keys: RedisStateKeys = defaultKeys,
 ): QueueState['runs'] {
+  // With a durable store the cache is only trimmed (uncounted) and the prune
+  // delegates for the authoritative counts; without one the cache IS the run
+  // store, so its evictions are the count. A durable store without `prune`
+  // leaves this surface without it too — the retention sweep skips it, and the
+  // cache stays bounded by its TTL + size cap.
+  const prune =
+    durable && !durable.prune
+      ? undefined
+      : async (cutoffs: RetentionCutoffs): Promise<PruneResult> => {
+          const evicted = await pruneRunsByAge(redis, keys, cutoffs);
+          if (durable?.prune) return durable.prune(cutoffs);
+          return { runs: evicted, events: 0, spans: 0 };
+        };
+
   return {
+    ...(prune ? { prune } : {}),
     list: async (options) => {
       const persisted = await durable?.list(options);
       if (persisted) {
@@ -351,6 +369,42 @@ async function readRuns(
 
   const rows = await redis.hgetall(keys.runs);
   return Object.values(rows).map(parseRun);
+}
+
+/**
+ * Age-trim the run cache: the zset scores are `updatedAt` millis (≈ finish
+ * time for terminal runs), so candidates older than the most recent cutoff
+ * come from one range read and are filtered per status bucket —
+ * O(candidates), never a full scan. A dangling index entry whose hash row is
+ * gone counts as pruned too.
+ */
+async function pruneRunsByAge(
+  redis: Redis,
+  keys: RedisStateKeys,
+  cutoffs: RetentionCutoffs,
+): Promise<number> {
+  const scoreCeiling = Math.max(
+    cutoffs.completedBefore?.getTime() ?? Number.NEGATIVE_INFINITY,
+    cutoffs.failedBefore?.getTime() ?? Number.NEGATIVE_INFINITY,
+  );
+  if (!Number.isFinite(scoreCeiling)) return 0;
+
+  const candidates = await redis.zrangebyscore(keys.runsIndex, 0, scoreCeiling);
+  if (candidates.length === 0) return 0;
+
+  const rows = await redis.hmget(keys.runs, ...candidates);
+  const doomed = candidates.filter((_, index) => {
+    const raw = rows[index];
+    return !raw || shouldPruneRun(parseRun(raw), cutoffs);
+  });
+  if (doomed.length === 0) return 0;
+
+  await redis
+    .multi()
+    .hdel(keys.runs, ...doomed)
+    .zrem(keys.runsIndex, ...doomed)
+    .exec();
+  return doomed.length;
 }
 
 async function pruneRuns(redis: Redis, keys: RedisStateKeys): Promise<void> {

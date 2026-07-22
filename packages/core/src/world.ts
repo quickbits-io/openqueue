@@ -9,6 +9,7 @@ export {
   filterSchedules,
   isTerminalRunStatus,
   runFromSnapshot,
+  shouldPruneRun,
 } from './store/filter';
 export type {
   ActiveTransportJob,

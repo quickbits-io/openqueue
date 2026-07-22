@@ -74,6 +74,8 @@ export {
   traceCarrierKey,
 } from './otel-hooks';
 export { InvalidScheduleError, UnknownTaskError } from './request-errors';
+export type { RetentionConfig, RetentionPolicy } from './retention';
+export { resolveRetentionPolicy, retentionCutoffs } from './retention';
 export { isTerminalRunStatus } from './runs';
 export type {
   CreateQueueWorkerOptions,
@@ -123,6 +125,7 @@ export type {
   FlowChildSpec,
   FlowParentSpec,
   FlowTaskDefinition,
+  PruneResult,
   QueueCatalogEntry,
   QueueCatalogStore,
   QueueDefinition,
@@ -143,6 +146,7 @@ export type {
   QueueSpanStore,
   QueueState,
   QueueStorage,
+  RetentionCutoffs,
   RunPrincipal,
   RunSpanKind,
   RunStatus,

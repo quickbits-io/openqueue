@@ -392,8 +392,31 @@ export interface QueueRunListResult {
   hasMore: boolean;
 }
 
+/** Absolute deletion cutoffs per retention category; an unset field skips it. */
+export interface RetentionCutoffs {
+  /** Delete completed/canceled runs that finished before this. */
+  completedBefore?: Date;
+  /** Delete failed (failed/timed_out/expired) runs that finished before this. */
+  failedBefore?: Date;
+  /** Delete run events and spans recorded before this. */
+  logsBefore?: Date;
+}
+
+export interface PruneResult {
+  runs: number;
+  events: number;
+  spans: number;
+}
+
 export interface QueueRunStore {
   list(options?: QueueRunListOptions): Promise<QueueRunListResult>;
+  /**
+   * Delete run history past the given cutoffs: terminal runs by their finish
+   * time, plus events/spans older than `logsBefore` or orphaned by run
+   * deletion. Runs that never finished are never pruned. Optional — the
+   * retention sweep skips stores without it.
+   */
+  prune?(cutoffs: RetentionCutoffs): Promise<PruneResult>;
 }
 
 export interface QueueRunPollOptions {

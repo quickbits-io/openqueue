@@ -15,6 +15,7 @@ import {
   filterSchedules,
   isTerminalRunStatus,
   runFromSnapshot,
+  shouldPruneRun,
 } from './filter';
 
 /** Retained-run ceiling, matching the Redis state store's `maxCachedRuns`. */
@@ -39,6 +40,16 @@ export function memoryQueueStorage(): QueueStorage {
     schedules: memoryScheduleStore(),
     runs: {
       list: async (options) => filterRuns([...runs.values()], options),
+      prune: async (cutoffs) => {
+        let pruned = 0;
+        for (const [id, run] of runs) {
+          if (!shouldPruneRun(run, cutoffs)) continue;
+          runs.delete(id);
+          pruned++;
+        }
+        // The memory store keeps no event/span history to prune.
+        return { runs: pruned, events: 0, spans: 0 };
+      },
     },
     alerts: memoryAlertStore(),
     handle: async (event) => {

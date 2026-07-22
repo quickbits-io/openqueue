@@ -1,4 +1,5 @@
 import type { AuthStrategy } from './auth';
+import type { RetentionConfig } from './retention';
 import type { QueueDrain, QueueStorage } from './types';
 import type { QueueConcurrency } from './worker';
 import type { WorldFactory } from './world';
@@ -26,6 +27,12 @@ export interface OpenQueueConfig {
   world?: WorldFactory;
   storage?: QueueStorage;
   drains?: QueueDrain[];
+  /**
+   * Age-based pruning of durable run history (defaults 30/90/30 days; see
+   * {@link RetentionConfig}). Swept hourly through the store's optional
+   * `prune` — stores without it are left untouched.
+   */
+  retention?: RetentionConfig;
   concurrency?: {
     global?: number;
     queues?: QueueConcurrency;

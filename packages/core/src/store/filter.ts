@@ -6,6 +6,7 @@ import type {
   QueueRunSnapshot,
   QueueSchedule,
   QueueScheduleListOptions,
+  RetentionCutoffs,
   RunStatus,
 } from '../types';
 
@@ -17,6 +18,37 @@ export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
   'timed_out',
   'expired',
 ];
+
+/** Terminal statuses the `completedBefore` retention cutoff applies to. */
+export const COMPLETED_RETENTION_STATUSES: readonly RunStatus[] = [
+  'completed',
+  'canceled',
+];
+
+/** Failure-outcome statuses the `failedBefore` retention cutoff applies to. */
+export const FAILED_RETENTION_STATUSES: readonly RunStatus[] = [
+  'failed',
+  'timed_out',
+  'expired',
+];
+
+/**
+ * Whether retention may delete this run: terminal, and finished before its
+ * bucket's cutoff (falling back to the last update for terminal runs that
+ * never recorded a finish). Runs still queued or executing never match.
+ */
+export function shouldPruneRun(
+  run: Pick<QueueRun, 'status' | 'finishedAt' | 'updatedAt'>,
+  cutoffs: RetentionCutoffs,
+): boolean {
+  const cutoff = COMPLETED_RETENTION_STATUSES.includes(run.status)
+    ? cutoffs.completedBefore
+    : FAILED_RETENTION_STATUSES.includes(run.status)
+      ? cutoffs.failedBefore
+      : undefined;
+  if (!cutoff) return false;
+  return (run.finishedAt ?? run.updatedAt).getTime() < cutoff.getTime();
+}
 
 export function isTerminalRunStatus(status: string | undefined): boolean {
   return (

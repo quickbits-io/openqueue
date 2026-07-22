@@ -5,6 +5,7 @@ import type {
   QueueRun,
   QueueRunListOptions,
   QueueRunStore,
+  RetentionCutoffs,
   RunStatus,
 } from '../types';
 
@@ -73,6 +74,30 @@ describe('queue runs api', () => {
       api.poll('run-1', { pollIntervalMs: 0, maxAttempts: 2 }),
     ).rejects.toThrow('Run run-1 did not complete after 2 attempts');
     expect(attempts).toBe(2);
+  });
+
+  it('passes prune through only when the store can prune', async () => {
+    expect(createRunsApi(runStore([]), stubCancel).prune).toBeUndefined();
+
+    const calls: RetentionCutoffs[] = [];
+    const api = createRunsApi(
+      {
+        list: async () => ({ data: [], hasMore: false }),
+        prune: async (cutoffs) => {
+          calls.push(cutoffs);
+          return { runs: 1, events: 2, spans: 3 };
+        },
+      },
+      stubCancel,
+    );
+
+    const cutoffs = { completedBefore: new Date() };
+    await expect(api.prune?.(cutoffs)).resolves.toEqual({
+      runs: 1,
+      events: 2,
+      spans: 3,
+    });
+    expect(calls).toEqual([cutoffs]);
   });
 });
 
