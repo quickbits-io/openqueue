@@ -42,6 +42,7 @@ export default defineConfig({
 | `world` | A [world](/docs/worlds) factory (e.g. `worldPostgres({ url })`) — the non-BullMQ path. XOR with `redis`. When set, the world owns durable state, so `storage` is not accepted. |
 | `storage` | A `QueueStorage` — use `postgresAdapter` to persist run history alongside the `redis` transport. |
 | `drains` | Sinks for run lifecycle events; `consoleDrain()` ships in the box, `composeDrains()` combines several. |
+| `retention` | Age-based pruning of durable run history — `{ completed: 30, failed: 90, logs: 30 }` days by default, `false` keeps a category forever. See [Retention](/docs/persistence#retention). |
 | `concurrency.global` | Worker-wide cap on parallel jobs. |
 | `concurrency.queues` | Per-queue caps, by queue name. |
 | `api.token` | Bearer token(s) for the `/openqueue/v1` control API. Sugar for a leading `apiKey()` strategy. Unset = open in dev, 401 in production. |

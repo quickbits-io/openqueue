@@ -165,6 +165,46 @@ Tags are stored separately for tag filters. Workbench's run filters (task,
 status, schedule, meta, tags, time range) map directly onto generic queue
 state rather than application-specific columns.
 
+## Retention
+
+Durable run history is pruned automatically. Each window counts from the
+run's **finish time** — a run that never finished (still queued or
+executing) is never pruned — and `false` keeps that category forever:
+
+```ts title="worker.config.ts"
+export default defineConfig({
+  // ...
+  retention: {
+    completed: 30, // days to keep completed/canceled runs (default)
+    failed: 90, // days to keep failed runs (default)
+    logs: 30, // days to keep run events + spans (default)
+  },
+});
+```
+
+| Field | Default | Covers |
+| --- | --- | --- |
+| `completed` | 30 days | `runs` rows that completed or were canceled. |
+| `failed` | 90 days | `runs` rows that failed, timed out, or expired. |
+| `logs` | 30 days | `run_events` + `run_spans` — the heavy telemetry. |
+
+The defaults follow trigger.dev: 30 days of logs is their Pro-plan default,
+with the retention timer starting when the run completes. Run records are
+additionally capped (30/90 days) because self-hosted storage is yours to
+pay for — opt out per field with `false` if you'd rather keep them.
+
+The worker sweeps hourly (plus once shortly after boot): aged runs go by
+their bucket's window, and events/spans go when older than `logs` *or*
+orphaned by a pruned run. One `[openqueue] retention: pruned …` line is
+logged when anything was deleted. The sweep runs through the store's
+optional `prune` capability, so custom stores without it are left
+untouched.
+
+This is separate from BullMQ's delivery-layer retention
+(`removeOnComplete`/`removeOnFail`, 7/30 days), which already trimmed
+finished jobs out of Redis — that bounds live queue state, while
+`retention` bounds the durable paper trail.
+
 ## Suggested patterns
 
 - **One schema object, two consumers.** Define `queueSchema` once and hand
@@ -174,23 +214,11 @@ state rather than application-specific columns.
 - **Storage is required for dynamic schedules and alerts.** Without an
   adapter, `task.schedules.create()` throws and alert rules have nowhere to
   live. Declarative `cron` tasks work either way.
-- **Prune with a task.** Run history grows forever by design — deleting is
-  your call. A cron task keeps it honest, and `run_events` cascades:
-
-  ```ts title="worker/prune-runs.ts"
-  import { lt } from 'drizzle-orm';
-  import { queueRuns } from '../src/queue-schema';
-
-  export const pruneRuns = task({
-    id: 'prune-runs',
-    schema: z.object({}),
-    cron: '0 4 * * *',
-    run: async () => {
-      const cutoff = new Date(Date.now() - 90 * 24 * 3600 * 1000);
-      await db.delete(queueRuns).where(lt(queueRuns.createdAt, cutoff.toISOString()));
-    },
-  });
-  ```
+- **Age-based pruning is built in.** [Retention](#retention) caps run
+  history at 30/90/30 days out of the box. Reach for your own cron task only
+  for criteria the age-based sweep can't express — per-tenant windows, or
+  archiving to cold storage before deletion (`run_events` cascades on run
+  delete either way).
 
 - **Worker pools share one set of tables.** Point every pool's adapter at
   the same schema — run history is keyed by run id, and schedules
