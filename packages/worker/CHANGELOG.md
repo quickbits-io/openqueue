@@ -1,5 +1,17 @@
 # @openqueue/worker
 
+## [1.2.0](https://github.com/quickbits-io/openqueue/compare/worker-v1.1.0...worker-v1.2.0) (2026-07-22)
+
+
+### Features
+
+* **worker:** hourly retention sweep ([dd4a34a](https://github.com/quickbits-io/openqueue/commit/dd4a34a1b1080e5a5744d1de449a8cb374c752b4))
+
+
+### Bug Fixes
+
+* **worker:** jitter the retention sweep and wire it for embedded runtimes ([1061085](https://github.com/quickbits-io/openqueue/commit/1061085a09ac6793fd2f998c21f3c61e88fbae7a))
+
 ## [1.1.0](https://github.com/quickbits-io/openqueue/compare/worker-v1.0.0...worker-v1.1.0) (2026-07-21)
 
 

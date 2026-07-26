@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/quickbits-io/openqueue/compare/world-postgres-v1.1.0...world-postgres-v1.2.0) (2026-07-22)
+
+
+### Features
+
+* **core:** retention policy for run history, events, and spans ([86fee4d](https://github.com/quickbits-io/openqueue/commit/86fee4ddcb12b3a51a5b9c2c6d749cf0bb3bc859))
+
+
+### Bug Fixes
+
+* **core:** batch and coordinate the retention prune ([fc973e6](https://github.com/quickbits-io/openqueue/commit/fc973e62ed20b55ec4e8f4c76743088c80f39790))
+
 ## [1.1.0](https://github.com/quickbits-io/openqueue/compare/world-postgres-v1.0.0...world-postgres-v1.1.0) (2026-07-21)
 
 

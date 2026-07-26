@@ -1,10 +1,10 @@
 {
-  "packages/cli": "1.1.0",
-  "packages/client": "1.1.0",
-  "packages/core": "1.1.0",
-  "packages/openqueue": "1.1.0",
-  "packages/workbench": "1.1.0",
-  "packages/worker": "1.1.0",
-  "packages/world-bullmq": "1.1.0",
-  "packages/world-postgres": "1.1.0"
+  "packages/cli": "1.2.0",
+  "packages/client": "1.2.0",
+  "packages/core": "1.2.0",
+  "packages/openqueue": "1.2.0",
+  "packages/workbench": "1.2.0",
+  "packages/worker": "1.2.0",
+  "packages/world-bullmq": "1.2.0",
+  "packages/world-postgres": "1.2.0"
 }

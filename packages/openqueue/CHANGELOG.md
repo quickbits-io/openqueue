@@ -1,5 +1,12 @@
 # @openqueue/sdk
 
+## [1.2.0](https://github.com/quickbits-io/openqueue/compare/sdk-v1.1.0...sdk-v1.2.0) (2026-07-22)
+
+
+### Miscellaneous Chores
+
+* **sdk:** Synchronize openqueue versions
+
 ## [1.1.0](https://github.com/quickbits-io/openqueue/compare/sdk-v1.0.0...sdk-v1.1.0) (2026-07-21)
 
 

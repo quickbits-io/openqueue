@@ -1,5 +1,19 @@
 # @openqueue/core
 
+## [1.2.0](https://github.com/quickbits-io/openqueue/compare/core-v1.1.0...core-v1.2.0) (2026-07-22)
+
+
+### Features
+
+* **core:** retention policy for run history, events, and spans ([86fee4d](https://github.com/quickbits-io/openqueue/commit/86fee4ddcb12b3a51a5b9c2c6d749cf0bb3bc859))
+* **worker:** hourly retention sweep ([dd4a34a](https://github.com/quickbits-io/openqueue/commit/dd4a34a1b1080e5a5744d1de449a8cb374c752b4))
+
+
+### Bug Fixes
+
+* **core:** batch and coordinate the retention prune ([fc973e6](https://github.com/quickbits-io/openqueue/commit/fc973e62ed20b55ec4e8f4c76743088c80f39790))
+* **worker:** jitter the retention sweep and wire it for embedded runtimes ([1061085](https://github.com/quickbits-io/openqueue/commit/1061085a09ac6793fd2f998c21f3c61e88fbae7a))
+
 ## [1.1.0](https://github.com/quickbits-io/openqueue/compare/core-v1.0.0...core-v1.1.0) (2026-07-21)
 
 
