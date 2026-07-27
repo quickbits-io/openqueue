@@ -1,5 +1,18 @@
 # @openqueue/workbench
 
+## [1.3.0](https://github.com/quickbits-io/openqueue/compare/workbench-v1.2.0...workbench-v1.3.0) (2026-07-27)
+
+
+### Features
+
+* **workbench:** searchable test target picker and clickable enqueue result ([81d5f2b](https://github.com/quickbits-io/openqueue/commit/81d5f2b67b3766caee966fbb4ce8f5cfb399f201))
+* **workbench:** searchable test target picker and clickable enqueue result ([02295e9](https://github.com/quickbits-io/openqueue/commit/02295e94fc83ce599b57f8203a8abd92de827387))
+
+
+### Bug Fixes
+
+* **workbench:** navigate the enqueue result card by transport job id ([fb5e372](https://github.com/quickbits-io/openqueue/commit/fb5e372f70bffc63856ef245430c48b1e1c26eed))
+
 ## [1.2.0](https://github.com/quickbits-io/openqueue/compare/workbench-v1.1.0...workbench-v1.2.0) (2026-07-22)
 
 
