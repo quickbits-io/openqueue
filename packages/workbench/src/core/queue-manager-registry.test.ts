@@ -214,6 +214,7 @@ describe('QueueManager registry', () => {
       status: 200,
       body: {
         id: 'job-1',
+        jobId: 'job-1',
         type: 'job',
         name: 'send-message',
         queueName: 'system',
@@ -235,6 +236,7 @@ describe('QueueManager registry', () => {
       status: 200,
       body: {
         id: 'flow-1',
+        jobId: 'flow-1',
         type: 'flow',
         name: 'Message flow',
         queueName: 'system',

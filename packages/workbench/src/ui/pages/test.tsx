@@ -109,7 +109,7 @@ function EnqueuedRunCard({
   return (
     <button
       type="button"
-      onClick={() => onOpen(run.queueName, run.id)}
+      onClick={() => onOpen(run.queueName, run.jobId)}
       className="flex w-full items-center gap-3 border border-status-success/40 bg-status-success/5 p-3 text-left hover:bg-status-success/10 focus:outline-none"
     >
       {content}
