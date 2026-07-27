@@ -300,7 +300,12 @@ export function Job({
   );
 }
 
-export function Test({ className, search }: SearchScreenProps<TestSearch>) {
+export function Test({
+  className,
+  navigation,
+  search,
+}: SearchScreenProps<TestSearch>) {
+  const nav = useNavigation(navigation);
   const { data: config } = useConfig();
 
   return (
@@ -309,6 +314,12 @@ export function Test({ className, search }: SearchScreenProps<TestSearch>) {
         registry={config?.registry}
         readonly={config?.readonly}
         prefill={search}
+        onJobSelect={(queueName, jobId) =>
+          nav.push({ name: 'job', queueName, jobId })
+        }
+        onFlowSelect={(queueName, jobId) =>
+          nav.push({ name: 'flow', queueName, jobId })
+        }
       />
     </Frame>
   );
