@@ -1,6 +1,9 @@
 import {
   AlertCircle,
+  ArrowRight,
+  Check,
   CheckCircle,
+  ChevronDown,
   FlaskConical,
   GitBranch,
   Play,
@@ -9,17 +12,22 @@ import {
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import type {
   TestJobRequest,
+  TestJobResponse,
   WorkbenchRegistryConfig,
   WorkbenchRegistryFlow,
   WorkbenchRegistryJob,
@@ -39,7 +47,13 @@ interface TestPageProps {
   registry?: WorkbenchRegistryConfig;
   readonly?: boolean;
   prefill?: TestSearch;
+  onJobSelect?: (queueName: string, jobId: string) => void;
+  onFlowSelect?: (queueName: string, jobId: string) => void;
 }
+
+type EnqueueResult =
+  | { status: 'success'; run: TestJobResponse }
+  | { status: 'error'; message: string };
 
 function entryKey(entry: RegistryEntry): string {
   return `${entry.type}:${entry.id}`;
@@ -63,7 +77,57 @@ function getErrorIssues(error: Error): ValidationIssue[] {
   });
 }
 
-export function TestPage({ registry, readonly, prefill }: TestPageProps) {
+function EnqueuedRunCard({
+  run,
+  onOpen,
+}: {
+  run: TestJobResponse;
+  onOpen?: (queueName: string, jobId: string) => void;
+}) {
+  const label = run.type === 'flow' ? 'Flow' : 'Job';
+  const content = (
+    <>
+      <CheckCircle className="h-4 w-4 shrink-0 text-status-success" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{label} enqueued</div>
+        <div className="truncate text-xs text-muted-foreground">
+          {run.name} · {run.queueName} ·{' '}
+          <span className="font-mono">{run.id}</span>
+        </div>
+      </div>
+    </>
+  );
+
+  if (!onOpen) {
+    return (
+      <div className="flex items-center gap-3 border border-status-success/40 bg-status-success/5 p-3">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(run.queueName, run.jobId)}
+      className="flex w-full items-center gap-3 border border-status-success/40 bg-status-success/5 p-3 text-left hover:bg-status-success/10 focus:outline-none"
+    >
+      {content}
+      <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+        View {label.toLowerCase()}
+        <ArrowRight className="h-3.5 w-3.5" />
+      </span>
+    </button>
+  );
+}
+
+export function TestPage({
+  registry,
+  readonly,
+  prefill,
+  onJobSelect,
+  onFlowSelect,
+}: TestPageProps) {
   const testJobMutation = useTestJob();
   const entries = React.useMemo<RegistryEntry[]>(
     () => [...(registry?.jobs ?? []), ...(registry?.flows ?? [])],
@@ -75,16 +139,14 @@ export function TestPage({ registry, readonly, prefill }: TestPageProps) {
   const prefillJobName = prefill?.jobName;
   const prefillPayload = prefill?.payload;
   const [selectedKey, setSelectedKey] = React.useState('');
+  const [pickerOpen, setPickerOpen] = React.useState(false);
   const selectedEntry = entries.find(
     (entry) => entryKey(entry) === selectedKey,
   );
   const [payload, setPayload] = React.useState('');
   const [delay, setDelay] = React.useState('');
   const [issues, setIssues] = React.useState<ValidationIssue[]>([]);
-  const [result, setResult] = React.useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
+  const [result, setResult] = React.useState<EnqueueResult | null>(null);
 
   React.useEffect(() => {
     const cloned =
@@ -121,7 +183,7 @@ export function TestPage({ registry, readonly, prefill }: TestPageProps) {
 
   const submitJob = React.useCallback(() => {
     if (!selectedEntry) {
-      setResult({ success: false, message: 'Select a job or flow' });
+      setResult({ status: 'error', message: 'Select a job or flow' });
       return;
     }
 
@@ -130,7 +192,7 @@ export function TestPage({ registry, readonly, prefill }: TestPageProps) {
       parsedPayload = JSON.parse(payload);
     } catch {
       setIssues([]);
-      setResult({ success: false, message: 'Invalid JSON payload' });
+      setResult({ status: 'error', message: 'Invalid JSON payload' });
       return;
     }
 
@@ -140,7 +202,7 @@ export function TestPage({ registry, readonly, prefill }: TestPageProps) {
       (!Number.isFinite(delaySeconds) || delaySeconds < 0)
     ) {
       setIssues([]);
-      setResult({ success: false, message: 'Delay must be zero or greater' });
+      setResult({ status: 'error', message: 'Delay must be zero or greater' });
       return;
     }
     const delayMs =
@@ -158,14 +220,11 @@ export function TestPage({ registry, readonly, prefill }: TestPageProps) {
 
     testJobMutation.mutate(request, {
       onSuccess: (response) => {
-        setResult({
-          success: true,
-          message: `${response.type === 'flow' ? 'Flow' : 'Job'} enqueued with ID: ${response.id}`,
-        });
+        setResult({ status: 'success', run: response });
       },
       onError: (error) => {
         setIssues(getErrorIssues(error));
-        setResult({ success: false, message: error.message });
+        setResult({ status: 'error', message: error.message });
       },
     });
   }, [delay, payload, selectedEntry, testJobMutation]);
@@ -222,40 +281,89 @@ export function TestPage({ registry, readonly, prefill }: TestPageProps) {
             <label htmlFor="test-target" className="text-sm font-medium">
               Target
             </label>
-            <Select value={selectedKey} onValueChange={setSelectedEntry}>
-              <SelectTrigger id="test-target">
-                <SelectValue placeholder="Select a job or flow" />
-              </SelectTrigger>
-              <SelectContent>
-                {jobs.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel>Jobs</SelectLabel>
-                    {jobs.map((job) => (
-                      <SelectItem key={entryKey(job)} value={entryKey(job)}>
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Play className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{job.name}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-                {jobs.length > 0 && flows.length > 0 && <SelectSeparator />}
-                {flows.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel>Flows</SelectLabel>
-                    {flows.map((flow) => (
-                      <SelectItem key={entryKey(flow)} value={entryKey(flow)}>
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Workflow className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{flow.name}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-              </SelectContent>
-            </Select>
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  id="test-target"
+                  role="combobox"
+                  aria-expanded={pickerOpen}
+                  className="flex h-9 w-full items-center justify-between gap-2 whitespace-nowrap border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus:outline-none"
+                >
+                  {selectedEntry ? (
+                    <span className="flex min-w-0 items-center gap-2">
+                      {selectedEntry.type === 'flow' ? (
+                        <Workflow className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <Play className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <span className="truncate">{selectedEntry.name}</span>
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      Select a job or flow
+                    </span>
+                  )}
+                  <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-[var(--radix-popover-trigger-width)] p-0"
+              >
+                <Command>
+                  <CommandInput placeholder="Search jobs and flows..." />
+                  <CommandList>
+                    <CommandEmpty>No jobs or flows found.</CommandEmpty>
+                    {jobs.length > 0 && (
+                      <CommandGroup heading="Jobs">
+                        {jobs.map((job) => (
+                          <CommandItem
+                            key={entryKey(job)}
+                            value={entryKey(job)}
+                            keywords={[job.name, job.queue]}
+                            onSelect={(value) => {
+                              setSelectedEntry(value);
+                              setPickerOpen(false);
+                            }}
+                          >
+                            <Play />
+                            <span className="truncate">{job.name}</span>
+                            {entryKey(job) === selectedKey && (
+                              <Check className="ml-auto" />
+                            )}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )}
+                    {jobs.length > 0 && flows.length > 0 && (
+                      <CommandSeparator />
+                    )}
+                    {flows.length > 0 && (
+                      <CommandGroup heading="Flows">
+                        {flows.map((flow) => (
+                          <CommandItem
+                            key={entryKey(flow)}
+                            value={entryKey(flow)}
+                            keywords={[flow.name, flow.queue]}
+                            onSelect={(value) => {
+                              setSelectedEntry(value);
+                              setPickerOpen(false);
+                            }}
+                          >
+                            <Workflow />
+                            <span className="truncate">{flow.name}</span>
+                            {entryKey(flow) === selectedKey && (
+                              <Check className="ml-auto" />
+                            )}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {selectedEntry && (
@@ -368,22 +476,20 @@ export function TestPage({ registry, readonly, prefill }: TestPageProps) {
               {testJobMutation.isPending ? 'Processing...' : 'Enqueue'}
             </Button>
 
-            {result && (
-              <div
-                className={cn(
-                  'flex min-w-0 items-center gap-2 text-sm',
-                  result.success ? 'text-success' : 'text-destructive',
-                )}
-              >
-                {result.success ? (
-                  <CheckCircle className="h-4 w-4 shrink-0" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                )}
+            {result?.status === 'error' && (
+              <div className="flex min-w-0 items-center gap-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
                 <span className="break-all">{result.message}</span>
               </div>
             )}
           </div>
+
+          {result?.status === 'success' && (
+            <EnqueuedRunCard
+              run={result.run}
+              onOpen={result.run.type === 'flow' ? onFlowSelect : onJobSelect}
+            />
+          )}
         </div>
       </form>
     </div>

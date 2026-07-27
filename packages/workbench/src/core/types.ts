@@ -553,7 +553,10 @@ export interface TestJobRequest {
 }
 
 export interface TestJobResponse {
+  /** Run id — the OpenQueue-level identifier. */
   id: string;
+  /** Transport job id — what the job/flow detail routes look up. */
+  jobId: string;
   type: TestTargetType;
   name: string;
   queueName: string;

@@ -131,7 +131,13 @@ describe('WorkbenchCore with an explicit empty queue set', () => {
 
     expect(response).toEqual({
       status: 200,
-      body: { id: 'run-1', type: 'job', name: 'ping', queueName: 'system' },
+      body: {
+        id: 'run-1',
+        jobId: 'run-1',
+        type: 'job',
+        name: 'ping',
+        queueName: 'system',
+      },
     });
     expect(calls).toEqual([{ input: { hello: 'world' } }]);
   });

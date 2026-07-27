@@ -2101,6 +2101,7 @@ export class QueueManager {
 
       return {
         id: result.runId,
+        jobId: result.jobId,
         type: 'job',
         name: job.name,
         queueName: job.queue,
@@ -2125,6 +2126,7 @@ export class QueueManager {
 
       return {
         id: result.runId,
+        jobId: result.jobId,
         type: 'flow',
         name: flow.name,
         queueName: flow.queue,
