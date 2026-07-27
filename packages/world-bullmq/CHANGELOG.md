@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/quickbits-io/openqueue/compare/world-bullmq-v1.2.0...world-bullmq-v1.3.0) (2026-07-27)
+
+
+### Miscellaneous Chores
+
+* **world-bullmq:** Synchronize openqueue versions
+
 ## [1.2.0](https://github.com/quickbits-io/openqueue/compare/world-bullmq-v1.1.0...world-bullmq-v1.2.0) (2026-07-22)
 
 
