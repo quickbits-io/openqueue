@@ -5,6 +5,7 @@ import {
   WORLD_SPEC_VERSION,
   type WorldContext,
 } from '@openqueue/core/world';
+import type { WorkerOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import {
   catalogKey,
@@ -34,6 +35,13 @@ export type WorldBullmqOptions = (
   prefix?: string;
   /** Durable store — also the sole catalog fallback consulted after Redis. */
   storage?: QueueStorage;
+  /**
+   * BullMQ `WorkerOptions` applied to every consumer the world spawns — the
+   * escape hatch for BullMQ tuning with no transport-agnostic equivalent
+   * (`stalledInterval`, `drainDelay`, ...). Core-owned options win, including
+   * the per-queue `concurrency` and `maxStalledCount`.
+   */
+  worker?: Omit<WorkerOptions, 'connection' | 'prefix' | 'autorun'>;
 };
 
 export function worldBullmq(
@@ -47,6 +55,7 @@ export function worldBullmq(
       consumer,
       namespace,
       prefix: options.prefix,
+      worker: options.worker,
     });
     const state = createRedisQueueState(producer, options.storage, namespace);
     const storage = options.storage;

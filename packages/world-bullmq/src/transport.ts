@@ -16,6 +16,7 @@ import {
   Queue,
   UnrecoverableError,
   Worker,
+  type WorkerOptions,
 } from 'bullmq';
 import type { Redis } from 'ioredis';
 
@@ -53,6 +54,14 @@ export interface CreateBullmqTransportOptions {
   namespace?: string;
   /** Root BullMQ key prefix; the transport uses `${prefix}:${namespace}`. */
   prefix?: string;
+  /**
+   * BullMQ `WorkerOptions` applied to every consumer this transport spawns —
+   * an escape hatch for tuning BullMQ has no transport-agnostic equivalent for
+   * (`stalledInterval`, `drainDelay`, ...). Core-owned options win: the
+   * connection and prefix the transport manages, plus the per-queue
+   * `concurrency` and `maxStalledCount` core carries on `ConsumeOptions`.
+   */
+  worker?: Omit<WorkerOptions, 'connection' | 'prefix' | 'autorun'>;
 }
 
 export function isBullmqTransport(
@@ -68,6 +77,8 @@ export function createBullmqTransport(
     namespace: options.namespace,
   }).namespace;
   const prefix = `${options.prefix ?? DEFAULT_BULL_PREFIX}:${namespace}`;
+  // Read here: `consume`'s own `options` parameter shadows this one.
+  const workerOptions = options.worker;
   // ioredis clients are not structurally `ConnectionOptions`; BullMQ accepts a
   // live client here. This is the single place the coercion lives.
   const connection = options.producer as unknown as ConnectionOptions;
@@ -151,6 +162,7 @@ export function createBullmqTransport(
         options,
         workerConnection(),
         prefix,
+        workerOptions,
       );
       consumers.add(consumer);
       // Wrap close so an individually-closed consumer drops out of the set the
@@ -223,6 +235,7 @@ function createBullmqConsumer(
   options: ConsumeOptions,
   connection: ConnectionOptions,
   prefix: string,
+  workerOptions: CreateBullmqTransportOptions['worker'],
 ): BullmqConsumer {
   const worker = new Worker(
     name,
@@ -234,6 +247,8 @@ function createBullmqConsumer(
       }
     },
     {
+      // Caller passthrough first — everything below is core-owned and wins.
+      ...workerOptions,
       connection,
       prefix,
       ...(options.concurrency !== undefined

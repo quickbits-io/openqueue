@@ -12,6 +12,7 @@ import { queueSchema } from './schema';
 import {
   createPostgresTransport,
   type PostgresTransportPollOptions,
+  type PostgresTransportStallOptions,
 } from './transport';
 
 export interface WorldPostgresOptions {
@@ -27,6 +28,8 @@ export interface WorldPostgresOptions {
   migrations?: MigrationMode;
   /** Poll cadence for the delivery transport. */
   poll?: PostgresTransportPollOptions;
+  /** Claim lease and heartbeat cadence for the delivery transport. */
+  stall?: PostgresTransportStallOptions;
 }
 
 /**
@@ -52,6 +55,7 @@ export function worldPostgres(options: WorldPostgresOptions): WorldFactory {
       sql,
       namespace: ctx.namespace,
       poll: options.poll,
+      stall: options.stall,
     });
     const store = postgresAdapter({ db: drizzle(sql), schema: queueSchema });
 

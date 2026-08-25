@@ -1,6 +1,7 @@
 import type { ActiveTransportJob, ConsumeOptions } from '@openqueue/core/world';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresTransport } from '../transport';
+import { worldPostgres } from '../world';
 import { hasDb, resetSchema, testClient, uniqueNamespace } from './test-db';
 
 describe.runIf(hasDb)('world-postgres stall recovery', () => {
@@ -260,6 +261,46 @@ describe.runIf(hasDb)('world-postgres stall recovery', () => {
 
     await a.close();
     await transport.close();
+  });
+
+  it('passes worldPostgres stall options down to the transport', async () => {
+    const queue = 'world-stall';
+    const world = await worldPostgres({
+      db: sql,
+      stall: { visibilityMs: 90_000, heartbeatMs: 100_000 },
+    })({ namespace });
+
+    let onStarted = (): void => {};
+    const started = new Promise<void>((resolve) => {
+      onStarted = resolve;
+    });
+    const consumer = world.transport.consume(
+      queue,
+      baseOptions({
+        process: async () => {
+          onStarted();
+          await sleep(200);
+          return 'ok';
+        },
+      }),
+    );
+
+    await world.transport.enqueue(queue, {
+      id: 'world-lease',
+      name: 'work',
+      data: {},
+    });
+    await started;
+    const [row] = await sql<{ lease: number }[]>`
+      select extract(epoch from (claimed_until - now()))::double precision as lease
+      from "openqueue"."jobs"
+      where namespace = ${namespace} and queue = ${queue} and id = 'world-lease'
+    `;
+    // The built-in 30s default would land nowhere near the configured 90s.
+    expect(row?.lease ?? 0).toBeGreaterThan(60);
+
+    await consumer.close();
+    await world.close();
   });
 
   it('keeps a long job alive via heartbeat so it is not stolen', async () => {
