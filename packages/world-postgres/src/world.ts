@@ -28,7 +28,11 @@ export interface WorldPostgresOptions {
   migrations?: MigrationMode;
   /** Poll cadence for the delivery transport. */
   poll?: PostgresTransportPollOptions;
-  /** Claim lease and heartbeat cadence for the delivery transport. */
+  /**
+   * Claim lease and heartbeat cadence for the delivery transport. A queue
+   * whose tasks declare a `maxDuration` overrides `visibilityMs` with the
+   * lease core derives from that budget.
+   */
   stall?: PostgresTransportStallOptions;
 }
 

@@ -59,7 +59,8 @@ export interface CreateBullmqTransportOptions {
    * an escape hatch for tuning BullMQ has no transport-agnostic equivalent for
    * (`stalledInterval`, `drainDelay`, ...). Core-owned options win: the
    * connection and prefix the transport manages, plus the per-queue
-   * `concurrency` and `maxStalledCount` core carries on `ConsumeOptions`.
+   * `concurrency`, `maxStalledCount`, and `lockDuration` core carries on
+   * `ConsumeOptions`.
    */
   worker?: Omit<WorkerOptions, 'connection' | 'prefix' | 'autorun'>;
 }
@@ -256,6 +257,9 @@ function createBullmqConsumer(
         : {}),
       ...(options.maxStalledCount !== undefined
         ? { maxStalledCount: options.maxStalledCount }
+        : {}),
+      ...(options.lockDuration !== undefined
+        ? { lockDuration: options.lockDuration }
         : {}),
     },
   );

@@ -39,7 +39,8 @@ export type WorldBullmqOptions = (
    * BullMQ `WorkerOptions` applied to every consumer the world spawns — the
    * escape hatch for BullMQ tuning with no transport-agnostic equivalent
    * (`stalledInterval`, `drainDelay`, ...). Core-owned options win, including
-   * the per-queue `concurrency` and `maxStalledCount`.
+   * the per-queue `concurrency`, `maxStalledCount`, and `lockDuration` core
+   * derives from its tasks.
    */
   worker?: Omit<WorkerOptions, 'connection' | 'prefix' | 'autorun'>;
 };

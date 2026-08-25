@@ -62,6 +62,7 @@ export interface TaskContext<I = unknown> {
   input: I;
   tags: string[];
   attempt: { number: number; max: number };
+  /** Aborted once the attempt exceeds the task's `maxDuration` budget. */
   signal: AbortSignal;
   logger: TaskLogger;
   trigger: <T>(
@@ -102,6 +103,14 @@ export interface TaskDefinitionInput<I = unknown, O = unknown> {
   backoff?: BackoffOptions | number;
   cron?: string;
   maxStalledCount?: number;
+  /**
+   * Designed runtime budget for one attempt, in milliseconds. An attempt that
+   * exceeds it has `ctx.signal` aborted and settles as `timed_out` — a blown
+   * budget is terminal, not retried. The budget also sizes the queue's
+   * delivery lease, so a task that uses all of it still settles inside the
+   * transport's lock.
+   */
+  maxDuration?: number;
   tags?: string[];
 }
 
@@ -117,6 +126,7 @@ export interface TaskDefinition<I = unknown, O = unknown> {
   backoff: BackoffOptions;
   cron?: string;
   maxStalledCount?: number;
+  maxDuration?: number;
   tags: string[];
   __input?: I;
   __output?: O;
@@ -330,6 +340,7 @@ export interface QueueCatalogEntry {
   backoff: BackoffOptions;
   concurrency: number;
   maxStalledCount?: number;
+  maxDuration?: number;
   cron?: string;
   tags: string[];
   description?: string;

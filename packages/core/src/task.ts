@@ -54,6 +54,7 @@ export function task<I, O>(input: TaskDefinitionInput<I, O>): Task<I, O> {
     backoff: normalizeBackoff(input.backoff),
     cron: input.cron,
     maxStalledCount: input.maxStalledCount,
+    maxDuration: input.maxDuration,
     tags: input.tags ?? [],
     trigger: (payload, opts) => trigger(def, payload, opts),
     schedules: {

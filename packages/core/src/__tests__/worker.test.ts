@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { TaskDefinition } from '../types';
 import { createLimiter, groupJobsByQueue } from '../worker';
 
-function job(name: string, queue: string, concurrency: number): TaskDefinition {
+function job(
+  name: string,
+  queue: string,
+  concurrency: number,
+  over: Partial<TaskDefinition> = {},
+): TaskDefinition {
   return {
     id: name,
     name,
@@ -12,6 +17,7 @@ function job(name: string, queue: string, concurrency: number): TaskDefinition {
     attempts: 1,
     backoff: { type: 'fixed', delay: 1 },
     tags: [],
+    ...over,
   };
 }
 
@@ -31,6 +37,31 @@ describe('worker grouping', () => {
     ).toEqual([
       { queue: 'system', jobs: ['a', 'b'], concurrency: 3 },
       { queue: 'documents', jobs: ['c'], concurrency: 4 },
+    ]);
+  });
+
+  it('collapses each queue to the most protective delivery options', () => {
+    const groups = groupJobsByQueue([
+      job('a', 'system', 1, { maxStalledCount: 3, maxDuration: 60_000 }),
+      job('b', 'system', 1, { maxStalledCount: 1, maxDuration: 120_000 }),
+      job('c', 'documents', 1),
+    ]);
+
+    expect(
+      groups.map((group) => ({
+        queue: group.queue,
+        maxStalledCount: group.maxStalledCount,
+        maxDuration: group.maxDuration,
+      })),
+    ).toEqual([
+      // The single consumer must cover the longest task budget and give up as
+      // early as the least stall-tolerant task.
+      { queue: 'system', maxStalledCount: 1, maxDuration: 120_000 },
+      {
+        queue: 'documents',
+        maxStalledCount: undefined,
+        maxDuration: undefined,
+      },
     ]);
   });
 });

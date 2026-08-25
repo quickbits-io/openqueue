@@ -36,18 +36,33 @@ const consumeOptions = {
  * against a mocked `bullmq` so no Redis is involved.
  */
 describe('bullmq consumer worker options', () => {
-  it('applies the transport-wide worker passthrough', () => {
+  it('applies the lease core derives from the queue task budgets', () => {
     const transport = createBullmqTransport({
       producer: {} as unknown as Redis,
       consumer: {} as unknown as Redis,
-      namespace: 'worker-passthrough',
-      worker: { stalledInterval: 5_000, drainDelay: 9 },
+      namespace: 'lock-per-task',
+    });
+
+    const { worker } = transport.consume('reports', {
+      ...consumeOptions,
+      lockDuration: 90_000,
+    });
+
+    expect(worker.opts.lockDuration).toBe(90_000);
+  });
+
+  it('falls back to the transport-wide worker passthrough', () => {
+    const transport = createBullmqTransport({
+      producer: {} as unknown as Redis,
+      consumer: {} as unknown as Redis,
+      namespace: 'lock-passthrough',
+      worker: { lockDuration: 45_000, stalledInterval: 5_000 },
     });
 
     const { worker } = transport.consume('reports', consumeOptions);
 
+    expect(worker.opts.lockDuration).toBe(45_000);
     expect(worker.opts.stalledInterval).toBe(5_000);
-    expect(worker.opts.drainDelay).toBe(9);
   });
 
   it('lets core-owned options win over the passthrough', () => {
@@ -56,10 +71,11 @@ describe('bullmq consumer worker options', () => {
     const transport = createBullmqTransport({
       producer,
       consumer,
-      namespace: 'worker-merge',
+      namespace: 'lock-merge',
       worker: {
         concurrency: 99,
         maxStalledCount: 9,
+        lockDuration: 45_000,
         stalledInterval: 5_000,
       },
     });
@@ -68,16 +84,18 @@ describe('bullmq consumer worker options', () => {
       ...consumeOptions,
       concurrency: 4,
       maxStalledCount: 2,
+      lockDuration: 90_000,
     });
 
     expect(worker.opts).toMatchObject({
       concurrency: 4,
       maxStalledCount: 2,
+      lockDuration: 90_000,
       // Untouched by core, so the passthrough survives.
       stalledInterval: 5_000,
     });
     // The transport owns delivery wiring; a passthrough can never redirect it.
     expect(worker.opts.connection).toBe(consumer);
-    expect(worker.opts.prefix).toBe('bull:worker-merge');
+    expect(worker.opts.prefix).toBe('bull:lock-merge');
   });
 });

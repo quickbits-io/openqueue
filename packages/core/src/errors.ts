@@ -39,6 +39,20 @@ export class JobCanceledError extends NonRetryableError {
   }
 }
 
+/**
+ * An attempt that outlived its task's `maxDuration` budget. Terminal by
+ * design — a budget the handler already blew is not something another attempt
+ * fixes — so it is non-retryable and its run settles as `timed_out`.
+ */
+export class MaxDurationExceededError extends NonRetryableError {
+  readonly timedOut = true;
+
+  constructor(maxDuration: number) {
+    super(`Task exceeded its maxDuration budget of ${maxDuration}ms`);
+    this.name = 'MaxDurationExceededError';
+  }
+}
+
 export function isNonRetryable(err: unknown): boolean {
   if (err instanceof NonRetryableError) return true;
   if (
@@ -49,6 +63,16 @@ export function isNonRetryable(err: unknown): boolean {
   )
     return true;
   return false;
+}
+
+export function isMaxDurationExceeded(err: unknown): boolean {
+  if (err instanceof MaxDurationExceededError) return true;
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'timedOut' in err &&
+    err.timedOut === true
+  );
 }
 
 export function serializeError(

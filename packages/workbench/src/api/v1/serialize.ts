@@ -79,6 +79,7 @@ export function wireCatalogEntry(entry: QueueCatalogEntry): WireCatalogEntry {
     backoff: entry.backoff,
     concurrency: entry.concurrency,
     maxStalledCount: entry.maxStalledCount,
+    maxDuration: entry.maxDuration,
     cron: entry.cron,
     tags: entry.tags,
     description: entry.description,

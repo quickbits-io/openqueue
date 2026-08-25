@@ -263,6 +263,108 @@ describe.runIf(hasDb)('world-postgres stall recovery', () => {
     await transport.close();
   });
 
+  it("leases a claim for the consumer's lease, not the transport default", async () => {
+    const queue = 'lease-short';
+    // Transport-wide visibility far longer than the test, heartbeat parked: only
+    // the consumer's own (shorter) lease can let this claim lapse.
+    const transport = createPostgresTransport({
+      sql,
+      namespace,
+      poll: { intervalMs: 25 },
+      stall: { visibilityMs: 60_000, heartbeatMs: 100_000 },
+    });
+
+    let onStarted = (): void => {};
+    const started = new Promise<void>((resolve) => {
+      onStarted = resolve;
+    });
+    const consumer = transport.consume(
+      queue,
+      baseOptions({
+        concurrency: 1,
+        maxStalledCount: 5,
+        lockDuration: 150,
+        process: async () => {
+          onStarted();
+          await sleep(600);
+          return 'ok';
+        },
+      }),
+    );
+
+    await transport.enqueue(queue, {
+      id: 'short-lease',
+      name: 'work',
+      data: {},
+    });
+    await started;
+
+    // The lease lapses mid-handler and the stall pass recovers the row. On the
+    // transport default it would stay 'active' for the next minute.
+    let state = 'active';
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const [row] = await sql<{ state: string }[]>`
+        select state from "openqueue"."jobs"
+        where namespace = ${namespace} and queue = ${queue} and id = 'short-lease'
+      `;
+      state = row?.state ?? 'missing';
+      if (state === 'waiting') break;
+      await sleep(25);
+    }
+    expect(state).toBe('waiting');
+
+    await consumer.close();
+    await transport.close();
+  });
+
+  it('lets a long lease outlive the transport-wide visibility window', async () => {
+    const queue = 'lease-long';
+    // Visibility shorter than the handler and no heartbeat to rescue it — only
+    // the consumer's longer lease keeps the claim (and its fence) alive.
+    const transport = createPostgresTransport({
+      sql,
+      namespace,
+      poll: { intervalMs: 25 },
+      stall: { visibilityMs: 200, heartbeatMs: 100_000 },
+    });
+
+    let processed = 0;
+    let completed = 0;
+    const consumer = transport.consume(
+      queue,
+      baseOptions({
+        concurrency: 1,
+        maxStalledCount: 5,
+        lockDuration: 60_000,
+        process: async () => {
+          processed += 1;
+          await sleep(600);
+          return 'ok';
+        },
+        onCompleted: () => {
+          completed += 1;
+        },
+      }),
+    );
+
+    await transport.enqueue(queue, {
+      id: 'long-lease',
+      name: 'work',
+      data: {},
+    });
+    await waitFor(() => completed === 1, 4000);
+    expect(processed).toBe(1);
+    const rows = await sql`
+      select 1 from "openqueue"."jobs"
+      where namespace = ${namespace} and queue = ${queue} and id = 'long-lease'
+    `;
+    expect(rows).toHaveLength(0);
+
+    await consumer.close();
+    await transport.close();
+  });
+
   it('passes worldPostgres stall options down to the transport', async () => {
     const queue = 'world-stall';
     const world = await worldPostgres({

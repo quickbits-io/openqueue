@@ -38,6 +38,7 @@ export interface WorkbenchJobDefinition<I = unknown, O = unknown> {
   backoff: unknown;
   cron?: string;
   maxStalledCount?: number;
+  maxDuration?: number;
   tags: string[];
   __input?: I;
   __output?: O;
