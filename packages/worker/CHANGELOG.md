@@ -1,5 +1,12 @@
 # @openqueue/worker
 
+## [1.3.0](https://github.com/quickbits-io/openqueue/compare/worker-v1.2.0...worker-v1.3.0) (2026-07-27)
+
+
+### Miscellaneous Chores
+
+* **worker:** Synchronize openqueue versions
+
 ## [1.2.0](https://github.com/quickbits-io/openqueue/compare/worker-v1.1.0...worker-v1.2.0) (2026-07-22)
 
 
