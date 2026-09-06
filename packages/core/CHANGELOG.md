@@ -1,5 +1,13 @@
 # @openqueue/core
 
+## [1.4.0](https://github.com/quickbits-io/openqueue/compare/core-v1.3.0...core-v1.4.0) (2026-09-06)
+
+
+### Features
+
+* **worker:** lifecycle onReady/onShutdown hooks ([e5a360c](https://github.com/quickbits-io/openqueue/commit/e5a360c0c2efa70e1b47c4438de3e515cec24d0a))
+* **worker:** lifecycle onReady/onShutdown hooks ([35ffcdd](https://github.com/quickbits-io/openqueue/commit/35ffcddefb6067d2f8ed0c0e4a3ab040451da541)), closes [#48](https://github.com/quickbits-io/openqueue/issues/48)
+
 ## [1.3.0](https://github.com/quickbits-io/openqueue/compare/core-v1.2.0...core-v1.3.0) (2026-07-27)
 
 
