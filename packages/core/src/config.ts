@@ -1,5 +1,6 @@
 import type { AuthStrategy } from './auth';
 import type { RetentionConfig } from './retention';
+import type { QueueWorkerRuntime } from './runtime';
 import type { QueueDrain, QueueStorage } from './types';
 import type { QueueConcurrency } from './worker';
 import type { WorldFactory } from './world';
@@ -59,6 +60,26 @@ export interface OpenQueueConfig {
     /** Ordered {@link AuthStrategy} walk for /openqueue/v1. Empty array = always
      *  401 (fail-closed). With `token` also set, the token check runs first. */
     auth?: AuthStrategy[];
+  };
+  /**
+   * Process-lifecycle hooks, run inside the worker on both boot paths
+   * (`startWorkerApp` and the built artifact). Each receives the live runtime,
+   * so a hook can enqueue. Each runs on every replica — dedupe a cluster-wide
+   * effect with a stable `jobId`. A hook is awaited with a timeout and its
+   * errors are logged; neither a slow nor a throwing hook can fail the process.
+   */
+  lifecycle?: {
+    /**
+     * Runs once every consumer is started, so a job enqueued here is immediately
+     * consumable by this worker — e.g. a release job keyed by the deploy sha,
+     * whose stable `jobId` collapses concurrent boots to one job.
+     */
+    onReady?: (runtime: QueueWorkerRuntime) => unknown;
+    /**
+     * Runs when the worker is shutting down, after `/ready` starts failing but
+     * before consumers drain, so the runtime is still live enough to enqueue.
+     */
+    onShutdown?: (runtime: QueueWorkerRuntime) => unknown;
   };
   build?: {
     outDir?: string;

@@ -49,7 +49,45 @@ export default defineConfig({
 | `api.auth` | Ordered [`AuthStrategy`](/docs/upgrading-to-1.0#new-surfaces) walk for the control API. Empty array = always 401 (fail-closed). |
 | `metrics` | Toggle metric collection and key prefix. |
 | `workbench` | Dashboard options — see below. |
+| `lifecycle` | `onReady` / `onShutdown` hooks run in the worker process — on both `openqueue dev` and the built artifact. Each receives the runtime; enqueue with `runtime.trigger(id, input, { jobId })`. See below. |
 | `build` | `outDir`, `extraFiles`, `external` for `openqueue build`. |
+
+## Lifecycle hooks
+
+Run code inside the worker process itself, on both `openqueue dev` and the built
+artifact. The canonical use is post-deploy convergence: the worker is the only
+process that observes "a new build just booted", and it already holds a runtime
+that can enqueue.
+
+```ts
+export default defineConfig({
+  lifecycle: {
+    onReady: async (runtime) => {
+      await runtime.trigger(
+        'release',
+        { release: BUILD_ID },
+        { jobId: `release:${BUILD_ID}` },
+      );
+    },
+  },
+});
+```
+
+| Field | Description |
+| --- | --- |
+| `onReady` | Runs once every consumer is started, so a job enqueued here is immediately consumable by this worker. |
+| `onShutdown` | Runs on shutdown after `/ready` starts failing but before consumers drain, so the runtime is still live enough to enqueue. |
+
+Both hooks run **on every replica**, and a rollout boots several. When the effect
+must happen once per cluster, pass a stable `jobId` — `release:${BUILD_ID}` above
+— so concurrent boots collapse to a single job.
+
+Neither hook can take the process down. A throwing hook is logged and the boot
+(or drain) continues. So is a hook still running after 10 seconds: the worker
+stops waiting and carries on, and the hook keeps running detached. That budget is
+sized for an enqueue, which is what these hooks are for — do the actual work in
+the job you trigger, not in the hook, or a slow `onReady` will hold the port shut
+and a slow `onShutdown` will eat the termination grace period.
 
 ## Workbench options
 
