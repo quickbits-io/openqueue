@@ -29,6 +29,7 @@ import {
 } from '@openqueue/world-bullmq';
 import type { H3 } from 'h3';
 import { createHealthServer } from './health';
+import { runHook } from './lifecycle';
 import { createQueueMetrics } from './metrics';
 
 /**
@@ -131,11 +132,29 @@ export async function createWorkerApp(
   );
   console.log(`[openqueue] published ${runtime.catalog.length} tasks`);
 
+  // A hook must never enqueue from `openqueue build`: its boot check imports the
+  // config only to census tasks. That path exits before it reaches the worker
+  // plugin today, so this guard is the backstop, not the mechanism.
+  const lifecycle = process.env.OPENQUEUE_BOOT_CHECK
+    ? undefined
+    : config.lifecycle;
+
+  const onReady = lifecycle?.onReady;
+  if (onReady) {
+    await runHook('onReady', () => onReady(runtime));
+  }
+
   let closed = false;
   const close = async () => {
     if (closed) return;
     closed = true;
     state.ready = false;
+    // Runs while the runtime is still live (so the hook can enqueue) but after
+    // /ready starts failing, so the hook isn't racing fresh traffic.
+    const onShutdown = lifecycle?.onShutdown;
+    if (onShutdown) {
+      await runHook('onShutdown', () => onShutdown(runtime));
+    }
     // The workbench started its own alert-manager interval + QueueEvents
     // listeners; the runtime doesn't own them, so tear it down here or the event
     // loop never drains. Workbench teardown is best-effort; a failed runtime
