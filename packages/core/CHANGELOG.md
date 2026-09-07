@@ -1,5 +1,12 @@
 # @openqueue/core
 
+## [1.5.0](https://github.com/quickbits-io/openqueue/compare/core-v1.4.0...core-v1.5.0) (2026-09-07)
+
+
+### Miscellaneous Chores
+
+* **core:** Synchronize openqueue versions
+
 ## [1.4.0](https://github.com/quickbits-io/openqueue/compare/core-v1.3.0...core-v1.4.0) (2026-09-06)
 
 

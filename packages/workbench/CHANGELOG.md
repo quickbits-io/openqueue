@@ -1,5 +1,13 @@
 # @openqueue/workbench
 
+## [1.5.0](https://github.com/quickbits-io/openqueue/compare/workbench-v1.4.0...workbench-v1.5.0) (2026-09-07)
+
+
+### Features
+
+* **workbench:** group the test page target picker by queue ([31a7349](https://github.com/quickbits-io/openqueue/commit/31a734969e1d67ed36254591b80156cf287382bc))
+* **workbench:** group the test page target picker by queue ([2cc00ba](https://github.com/quickbits-io/openqueue/commit/2cc00ba150314bf06de4b64dc5fdef966ece69ab))
+
 ## [1.4.0](https://github.com/quickbits-io/openqueue/compare/workbench-v1.3.0...workbench-v1.4.0) (2026-09-06)
 
 
