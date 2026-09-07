@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/quickbits-io/openqueue/compare/world-postgres-v1.4.0...world-postgres-v1.5.0) (2026-09-07)
+
+
+### Miscellaneous Chores
+
+* **world-postgres:** Synchronize openqueue versions
+
 ## [1.4.0](https://github.com/quickbits-io/openqueue/compare/world-postgres-v1.3.0...world-postgres-v1.4.0) (2026-09-06)
 
 
