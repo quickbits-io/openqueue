@@ -5,7 +5,6 @@ import {
   CheckCircle,
   ChevronDown,
   FlaskConical,
-  GitBranch,
   Play,
   Workflow,
 } from 'lucide-react';
@@ -133,8 +132,15 @@ export function TestPage({
     () => [...(registry?.jobs ?? []), ...(registry?.flows ?? [])],
     [registry],
   );
-  const jobs = registry?.jobs ?? [];
-  const flows = registry?.flows ?? [];
+  const queues = React.useMemo(() => {
+    const byQueue = new Map<string, RegistryEntry[]>();
+    for (const entry of entries) {
+      const group = byQueue.get(entry.queue);
+      if (group) group.push(entry);
+      else byQueue.set(entry.queue, [entry]);
+    }
+    return [...byQueue].sort(([a], [b]) => a.localeCompare(b));
+  }, [entries]);
   const prefillQueue = prefill?.queue;
   const prefillJobName = prefill?.jobName;
   const prefillPayload = prefill?.payload;
@@ -315,51 +321,30 @@ export function TestPage({
                   <CommandInput placeholder="Search jobs and flows..." />
                   <CommandList>
                     <CommandEmpty>No jobs or flows found.</CommandEmpty>
-                    {jobs.length > 0 && (
-                      <CommandGroup heading="Jobs">
-                        {jobs.map((job) => (
-                          <CommandItem
-                            key={entryKey(job)}
-                            value={entryKey(job)}
-                            keywords={[job.name, job.queue]}
-                            onSelect={(value) => {
-                              setSelectedEntry(value);
-                              setPickerOpen(false);
-                            }}
-                          >
-                            <Play />
-                            <span className="truncate">{job.name}</span>
-                            {entryKey(job) === selectedKey && (
-                              <Check className="ml-auto" />
-                            )}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
-                    {jobs.length > 0 && flows.length > 0 && (
-                      <CommandSeparator />
-                    )}
-                    {flows.length > 0 && (
-                      <CommandGroup heading="Flows">
-                        {flows.map((flow) => (
-                          <CommandItem
-                            key={entryKey(flow)}
-                            value={entryKey(flow)}
-                            keywords={[flow.name, flow.queue]}
-                            onSelect={(value) => {
-                              setSelectedEntry(value);
-                              setPickerOpen(false);
-                            }}
-                          >
-                            <Workflow />
-                            <span className="truncate">{flow.name}</span>
-                            {entryKey(flow) === selectedKey && (
-                              <Check className="ml-auto" />
-                            )}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
+                    {queues.map(([queue, group], index) => (
+                      <React.Fragment key={queue}>
+                        {index > 0 && <CommandSeparator />}
+                        <CommandGroup heading={queue}>
+                          {group.map((entry) => (
+                            <CommandItem
+                              key={entryKey(entry)}
+                              value={entryKey(entry)}
+                              keywords={[entry.name, entry.queue]}
+                              onSelect={(value) => {
+                                setSelectedEntry(value);
+                                setPickerOpen(false);
+                              }}
+                            >
+                              {entry.type === 'flow' ? <Workflow /> : <Play />}
+                              <span className="truncate">{entry.name}</span>
+                              {entryKey(entry) === selectedKey && (
+                                <Check className="ml-auto" />
+                              )}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </React.Fragment>
+                    ))}
                   </CommandList>
                 </Command>
               </PopoverContent>
@@ -371,7 +356,7 @@ export function TestPage({
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center border bg-background">
                   {selectedEntry.type === 'flow' ? (
-                    <GitBranch className="h-4 w-4" />
+                    <Workflow className="h-4 w-4" />
                   ) : (
                     <Play className="h-4 w-4" />
                   )}
