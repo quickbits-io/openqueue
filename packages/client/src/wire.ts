@@ -171,6 +171,7 @@ export const wireCatalogEntrySchema = z.object({
   backoff: backoffSchema,
   concurrency: z.number(),
   maxStalledCount: z.number().optional(),
+  maxDuration: z.number().optional(),
   cron: z.string().optional(),
   tags: z.array(z.string()),
   description: z.string().optional(),

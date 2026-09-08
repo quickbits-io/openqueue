@@ -155,6 +155,7 @@ export interface QueueCatalogEntry {
   backoff: BackoffOptions;
   concurrency: number;
   maxStalledCount?: number;
+  maxDuration?: number;
   cron?: string;
   tags: string[];
   description?: string;

@@ -16,6 +16,7 @@ export function taskCatalogEntry(
     backoff: def.backoff,
     concurrency: def.concurrency,
     maxStalledCount: def.maxStalledCount,
+    maxDuration: def.maxDuration,
     cron: def.cron,
     tags: def.tags,
     description: def.description,
@@ -46,6 +47,7 @@ export function catalogEntryDefinition(
     backoff: entry.backoff,
     cron: entry.cron,
     maxStalledCount: entry.maxStalledCount,
+    maxDuration: entry.maxDuration,
     tags: entry.tags,
   };
 }

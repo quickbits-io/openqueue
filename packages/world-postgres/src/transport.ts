@@ -34,7 +34,13 @@ export interface PostgresTransportPollOptions {
 }
 
 export interface PostgresTransportStallOptions {
-  /** How long a claim survives without a heartbeat before it can be recovered. Default 30000ms. */
+  /**
+   * How long a claim survives without a heartbeat before it can be recovered.
+   * Default 30000ms; a consumer's core-derived `lockDuration` overrides it for
+   * that queue. Keep it above `heartbeatMs` — a lease shorter than the
+   * heartbeat interval expires between beats and a peer reclaims the job
+   * mid-flight.
+   */
   visibilityMs?: number;
   /** Heartbeat interval that extends live claims. Default 10000ms. */
   heartbeatMs?: number;
@@ -107,6 +113,8 @@ interface PgConsumer {
   options: ConsumeOptions;
   concurrency: number;
   maxStalled: number;
+  // Lease this consumer stamps on the rows it claims, and extends on heartbeat.
+  visibilityMs: number;
   inFlight: Map<string, InFlightJob>;
   closed: boolean;
   wake: () => void;
@@ -261,12 +269,16 @@ export function createPostgresTransport(
     return updated.length > 0;
   }
 
-  async function claim(queue: string, limit: number): Promise<ClaimedRow[]> {
+  async function claim(
+    consumer: PgConsumer,
+    limit: number,
+  ): Promise<ClaimedRow[]> {
+    const queue = consumer.queue;
     const claimId = randomUUID();
     return sql<ClaimedRow[]>`
       update "openqueue"."jobs" as j
       set state = 'active',
-          claimed_until = now() + ${seconds(visibilityMs)},
+          claimed_until = now() + ${seconds(consumer.visibilityMs)},
           processed_on = now(),
           claim_id = ${claimId}
       where (j.namespace, j.queue, j.id) in (
@@ -464,7 +476,7 @@ export function createPostgresTransport(
 
       let rows: ClaimedRow[];
       try {
-        rows = await claim(consumer.queue, Math.min(batch, capacity));
+        rows = await claim(consumer, Math.min(batch, capacity));
       } catch (err) {
         runOnError(consumer, err);
         await waitForWork(consumer);
@@ -503,7 +515,7 @@ export function createPostgresTransport(
     try {
       await sql`
         update "openqueue"."jobs"
-        set claimed_until = now() + ${seconds(visibilityMs)}
+        set claimed_until = now() + ${seconds(consumer.visibilityMs)}
         where namespace = ${namespace} and queue = ${consumer.queue}
           and state = 'active' and claim_id = any(${sql.array(claimIds)})
       `;
@@ -532,6 +544,7 @@ export function createPostgresTransport(
       options: opts,
       concurrency: opts.concurrency ?? 1,
       maxStalled: opts.maxStalledCount ?? 1,
+      visibilityMs: opts.lockDuration ?? visibilityMs,
       inFlight: new Map(),
       closed: false,
       wake: NOOP,

@@ -57,10 +57,12 @@ export {
 } from './drizzle';
 export { enqueue, enqueueFlow } from './enqueue';
 export {
+  isMaxDurationExceeded,
   isNonRetryable,
   JobCanceledError,
   JobExpiredError,
   JobTimeoutError,
+  MaxDurationExceededError,
   NonRetryableError,
   RetryableError,
   serializeError,

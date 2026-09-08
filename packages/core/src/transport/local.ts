@@ -23,7 +23,8 @@ import type {
  * no-op and dedup is best-effort); a failed flow parent emits no worker
  * callback.
  *
- * `spec.retention` and `maxStalledCount` are accepted and ignored;
+ * `spec.retention`, `maxStalledCount`, and `lockDuration` are accepted and
+ * ignored (delivery is in-process, so there is no lock to expire);
  * `job.log()` is a no-op returning 0 (Stage C wires log capture).
  */
 

@@ -385,6 +385,7 @@ function catalogJob(entry: QueueCatalogEntry): WorkbenchJobDefinition {
     backoff: entry.backoff,
     cron: entry.cron,
     maxStalledCount: entry.maxStalledCount,
+    maxDuration: entry.maxDuration,
     tags: entry.tags,
   };
 }

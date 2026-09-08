@@ -9,7 +9,13 @@ import {
   trace,
 } from '@opentelemetry/api';
 import { composeDrains } from './compose';
-import { isNonRetryable, NonRetryableError, serializeError } from './errors';
+import {
+  isMaxDurationExceeded,
+  isNonRetryable,
+  MaxDurationExceededError,
+  NonRetryableError,
+  serializeError,
+} from './errors';
 import { withJobLogs } from './job-logs';
 import { consoleLogger } from './logger';
 import { buildSnapshot, unwrapInput } from './snapshot';
@@ -56,7 +62,15 @@ export interface WorkerGroup {
   jobs: TaskDefinition[];
   concurrency: number;
   maxStalledCount?: number;
+  maxDuration?: number;
 }
+
+/**
+ * Headroom added to a queue's longest task budget when sizing the transport
+ * lease: the 30s stall tolerance both first-party worlds default to, so a task
+ * that spends its whole budget still settles inside its delivery lock.
+ */
+const LEASE_HEADROOM_MS = 30_000;
 
 const TRACER_NAME = '@openqueue/sdk';
 const TRACER_VERSION = '0.1.0';
@@ -73,20 +87,38 @@ export function createWorkerConsumers<C extends TransportConsumer>(
   const transportId = transport.id;
 
   return groups.map(
-    ({ queue: queueName, jobs: defs, concurrency, maxStalledCount }) => {
+    ({
+      queue: queueName,
+      jobs: defs,
+      concurrency,
+      maxStalledCount,
+      maxDuration,
+    }) => {
       const defByName = new Map(defs.map((d) => [d.name, d]));
+      // Attempts that blew their budget, handed from `process` to `onFailed`:
+      // the BullMQ world replaces the thrown error with its own
+      // `UnrecoverableError`, so the outcome cannot ride on the error object.
+      const overBudget = new Set<string>();
 
       return transport.consume(queueName, {
         concurrency,
         ...(maxStalledCount !== undefined ? { maxStalledCount } : {}),
+        ...(maxDuration !== undefined
+          ? { lockDuration: maxDuration + LEASE_HEADROOM_MS }
+          : {}),
         isFinal: isNonRetryable,
-        process: (job) => {
+        process: async (job) => {
           // Captured before the limiter so Dequeued → Started exposes time
           // spent waiting on global concurrency plus run setup.
           const dequeuedAt = Date.now();
-          return limiter(() =>
-            runJob(job, defByName, drain, dequeuedAt, trigger, transportId),
-          );
+          try {
+            return await limiter(() =>
+              runJob(job, defByName, drain, dequeuedAt, trigger, transportId),
+            );
+          } catch (err) {
+            if (isMaxDurationExceeded(err)) overBudget.add(attemptKey(job));
+            throw err;
+          }
         },
         onCompleted: async (job) => {
           const def = defByName.get(job.name);
@@ -102,11 +134,16 @@ export function createWorkerConsumers<C extends TransportConsumer>(
           await ensureRunIdentity(job);
           const willRetry =
             !final && job.attemptsMade < (job.opts.attempts ?? 0);
+          const timedOut = overBudget.delete(attemptKey(job));
           const snapshot: QueueRunSnapshot = {
             ...buildSnapshot({
               job,
               def,
-              status: willRetry ? 'reattempting' : 'failed',
+              status: willRetry
+                ? 'reattempting'
+                : timedOut
+                  ? 'timed_out'
+                  : 'failed',
               willRetry,
             }),
             error: serializeError(err, { retryable: !final }),
@@ -138,7 +175,11 @@ export function groupJobsByQueue(
     concurrency: positiveInt(
       queueConcurrency?.[queue] ?? Math.max(...defs.map((d) => d.concurrency)),
     ),
+    // A queue has one consumer, so each option collapses to the value that
+    // protects the whole lane: the fewest stall recoveries any task tolerates,
+    // and the longest budget any task is allowed.
     maxStalledCount: minDefined(defs.map((d) => d.maxStalledCount)),
+    maxDuration: maxDefined(defs.map((d) => d.maxDuration)),
   }));
 }
 
@@ -148,6 +189,14 @@ function minDefined(values: Array<number | undefined>): number | undefined {
   );
   if (defined.length === 0) return undefined;
   return Math.min(...defined);
+}
+
+function maxDefined(values: Array<number | undefined>): number | undefined {
+  const defined = values.filter(
+    (value): value is number => value !== undefined,
+  );
+  if (defined.length === 0) return undefined;
+  return Math.max(...defined);
 }
 
 export function createLimiter(limit?: number) {
@@ -276,7 +325,11 @@ async function runJob(
     async (attemptSpan) => {
       let errored = false;
       try {
-        return await withJobLogs(job, async () => def.handler(ctx));
+        return await withJobLogs(job, async () =>
+          def.maxDuration === undefined
+            ? def.handler(ctx)
+            : withMaxDuration(def.handler(ctx), def.maxDuration, controller),
+        );
       } catch (err) {
         errored = true;
         recordSpanError(attemptSpan, err);
@@ -289,6 +342,33 @@ async function runJob(
       }
     },
   );
+}
+
+/**
+ * Race a running handler against its task's `maxDuration` budget. Cancellation
+ * is cooperative: the budget aborts `ctx.signal`, but an in-process handler
+ * that ignores the signal keeps running to completion — its result (or late
+ * rejection) is discarded, because the attempt's promise has already settled.
+ */
+function withMaxDuration<T>(
+  running: Promise<T>,
+  maxDuration: number,
+  controller: AbortController,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new MaxDurationExceededError(maxDuration));
+    }, maxDuration);
+    // Settles the race for a handler that finishes in time, and absorbs the
+    // late rejection of one that does not — nothing awaits it any more.
+    void running.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
+/** Ties one job's `process` call to the lifecycle callbacks that follow it. */
+function attemptKey(job: ActiveTransportJob): string {
+  return job.id ?? job.name;
 }
 
 async function ensureRunIdentity(job: ActiveTransportJob): Promise<void> {

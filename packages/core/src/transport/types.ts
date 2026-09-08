@@ -96,6 +96,13 @@ export interface ActiveTransportJob {
 export interface ConsumeOptions {
   concurrency?: number;
   maxStalledCount?: number;
+  /**
+   * How long the transport's delivery lock/lease on an active job survives
+   * without renewal, in milliseconds. Core derives it from the queue's task
+   * budgets (the longest `maxDuration` plus stall headroom) rather than taking
+   * it from the user. Transports that have no lock ignore it.
+   */
+  lockDuration?: number;
   process(job: ActiveTransportJob): Promise<unknown>;
   /** Core passes `isNonRetryable`; a `true` result stops retries this attempt. */
   isFinal(err: unknown): boolean;
