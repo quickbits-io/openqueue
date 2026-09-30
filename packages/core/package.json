@@ -80,7 +80,7 @@
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/sdk-trace-base": "^2.5.0",
-    "cron-parser": "^4.9.0",
+    "cron-parser": "^5.6.2",
     "drizzle-orm": "^0.45.1",
     "jose": "^6.2.3",
     "zod": "^4.1.13"
