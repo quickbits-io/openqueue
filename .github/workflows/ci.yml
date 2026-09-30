@@ -34,7 +34,7 @@ jobs:
     steps:
       # Actions are pinned to a commit SHA (supply-chain hardening); the trailing
       # comment tracks the human-readable version. Dependabot keeps them current.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           # CI never pushes — don't leave the token in the git config where build
           # code (incl. untrusted PR code) could read it.
@@ -94,7 +94,7 @@ jobs:
         # line. Both must import every Node-capable package's built dist.
         node-version: ['20.11.1', '22']
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
 
@@ -145,7 +145,7 @@ jobs:
     env:
       REDIS_URL: redis://localhost:6379
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
 
@@ -200,7 +200,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       DATABASE_URL: postgres://openqueue:openqueue@localhost:5432/openqueue
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
 
@@ -242,7 +242,7 @@ jobs:
       # falling back to a reachable Redis.
       REDIS_URL: redis://127.0.0.1:9
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
 
@@ -289,7 +289,7 @@ jobs:
       # Poisoned: the split suite must never touch Redis.
       REDIS_URL: redis://127.0.0.1:9
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
 
